@@ -4,6 +4,7 @@ import {browser, BASE} from './lib.mjs';
 const b = await browser(), CLASS = '8 «В»', API = BASE + '/results/api/crew/';
 const post = async (path, body) => (await fetch(API + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})).json();
 const teacher = (action, extra = {}) => post('teacher', {className: CLASS, action, ...extra});
+const place = async (bot, x, y) => { await fetch(BASE + '/test/crew/place?' + new URLSearchParams({className: CLASS, id: bot.id, x, y})); bot.x = x; bot.y = y; };   // сервер телепорты не принимает — переносит стенд
 const key = async (type, code) => b.send('Input.dispatchKeyEvent', {type, code, key: code.startsWith('Digit') ? code[5] : code.startsWith('Key') ? code[3].toLowerCase() : code, windowsVirtualKeyCode: {KeyQ: 81, KeyE: 69, KeyF: 70, KeyR: 82, KeyG: 71, KeyM: 77, KeyJ: 74, ArrowRight: 39, Enter: 13, Escape: 27}[code] || code.charCodeAt(5)});
 const press = async code => { await key('rawKeyDown', code); await key('keyUp', code); await b.sleep(120); };
 const st = () => b.ev('return window.crew');
@@ -82,7 +83,7 @@ function startedAt() { return startedAt.t || (startedAt.t = Date.now() - 6000); 
 if (role === 'imp') { await b.ev(`crewGo(${bots[0].x + 0.6},${bots[0].y})`); await b.sleep(600); await press('KeyF'); await b.sleep(900);
   b.check('вредитель в браузере: импульс выглядит как у всех, результат — только в личном деле', (await st()).secret.last.startsWith('заражён') && await b.ev("return getComputedStyle($('.cr-secret')).opacity==='0'"));
   await b.sleep(5600); const tv = await teacher('state'); b.check('жертва отключается через 5 секунд, а не сразу', tv.players.find(p => p.id === bots[0].id).alive === false);
-} else { const imp = bots.find(x => x.id === impId), me = await st(); imp.x = me.x + 0.6; imp.y = me.y; await b.sleep(800); imp.acts.push({t: 'pulse'}); await b.sleep(1200);
+} else { const imp = bots.find(x => x.id === impId), me = await st(); await place(imp, me.x + 0.6, me.y); await b.sleep(800); imp.acts.push({t: 'pulse'}); await b.sleep(1200);
   b.check('после импульса вредителя игрок ещё жив и ничего не замечает', (await st()).me.alive === true && await b.ev("return $('.cr-over').hidden")); await b.shot('crew-pulse', 1440, 860, false);
   await until('!c.me.alive', 9000); await b.sleep(400); await b.shot('crew-ghost', 1440, 860, false);
   b.check('через 5 секунд игрок отключён; ему открыт чат отключённых', await b.ev("return !$('.cr-chatform input').disabled&&/отключён/.test($('.cr-chatnote').textContent)"));
@@ -91,7 +92,7 @@ if (role === 'imp') { await b.ev(`crewGo(${bots[0].x + 0.6},${bots[0].y})`); awa
 }
 // Собрание: живой член экипажа находит отключённого и сообщает.
 const tv = await teacher('state'), body = tv.players.find(p => !p.alive), reporter = bots.find(x => x.id !== impId && x.id !== body.id);
-reporter.x = body.x + 0.5; reporter.y = body.y; await b.sleep(900); reporter.acts.push({t: 'report'}); await until("c.phase==='meeting'"); await b.sleep(500);
+await place(reporter, body.x + 0.5, body.y); await b.sleep(900); reporter.acts.push({t: 'report'}); await until("c.phase==='meeting'"); await b.sleep(500);
 reporter.acts.push({t: 'chat', text: 'я нашёл его в коридоре, рядом был ' + (tv.players.find(p => p.id === impId).name)}); await b.sleep(1200); await b.shot('crew-meeting', 1440, 860, false);
 b.check('собрание: список для голосования и сообщение в чате', await b.ev("return document.querySelectorAll('.cr-vote').length===7&&/нашёл его в коридоре/.test($('.cr-chat').textContent)"));
 b.check('шкала заданий обновилась на собрании', (await st()).progress[0] === (role !== 'imp' ? 1 : 0));

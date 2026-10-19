@@ -322,4 +322,51 @@ g, room, ps = new(6); g.start(room, 100)
 for p in ps: p['right'] = 9
 g.finish(room, 'crew', 'тест.', 110); room2 = g.room('8 «А»', 110 + C.IDLE + 1)
 check('через два часа без игроков комната начинается заново: прошлый урок не идёт в отметки', room2 is not room and room2['players'] == {} and g.marks(room2, [4, 8, 12]) == [])
+# --- античит: сервер принимает только шаги, которые можно пройти
+M = ST['map']; F = lambda x, y: 0 <= y < len(M) and 0 <= x < len(M[0]) and M[y][x] == '.'
+g, room, ps = new(6); g.start(room, 100); w = next(p for p in ps if p['role'] == 'crew')
+def place(x, y, t): w.update(x=x, y=y, pos_t=t, moved=False)
+run = next((x, y) for y in range(len(M)) for x in range(len(M[0]) - 6) if all(F(x + k, y) for k in range(6)))
+place(run[0] + 0.5, run[1] + 0.5, 100)
+for k in range(1, 6): g.move(room, w, run[0] + 0.5 + k * 1.0, run[1] + 0.5, 100 + k * 0.23)
+check('обычная ходьба по коридору принимается', abs(w['x'] - (run[0] + 5.5)) < 1e-9 and not w.get('moved'), (w['x'], run))
+far = next((x, y) for y in range(len(M)) for x in range(len(M[0])) if F(x, y) and abs(x - run[0]) + abs(y - run[1]) > 20)
+place(run[0] + 0.5, run[1] + 0.5, 200); g.move(room, w, far[0] + 0.5, far[1] + 0.5, 200.23)
+check('телепорт через полкарты отклонён, игрок возвращается на место', (w['x'], w['y']) == (run[0] + 0.5, run[1] + 0.5) and w.get('moved'))
+thin = next((x, y, k) for y in range(len(M)) for x in range(len(M[0]) - 7) for k in range(2, 7) if F(x, y) and F(x + k, y) and not any(F(x + i, y) for i in range(1, k)))
+place(thin[0] + 0.5, thin[1] + 0.5, 300); g.move(room, w, thin[0] + thin[2] + 0.5, thin[1] + 0.5, 302)
+check('сквозь стену не пройти даже с запасом времени', w['x'] == thin[0] + 0.5 and w.get('moved'), thin)
+corner = next((x, y) for y in range(len(M) - 1) for x in range(len(M[0]) - 1) if F(x, y) and F(x + 1, y) and F(x + 1, y + 1) and not F(x, y + 1))
+place(corner[0] + 0.5, corner[1] + 0.5, 400); g.move(room, w, corner[0] + 1.5, corner[1] + 1.5, 400.3)
+check('поворот за угол засчитывается', (w['x'], w['y']) == (corner[0] + 1.5, corner[1] + 1.5), corner)
+door = next(((dx, dy), (ax, ay), (bx, by)) for dx, dy in ST['doors'] for (ax, ay), (bx, by) in [((dx - 1, dy), (dx + 1, dy)), ((dx, dy - 1), (dx, dy + 1))] if F(ax, ay) and F(bx, by) and (ax, ay) not in C.DOORS['station'] and (bx, by) not in C.DOORS['station'])
+(_, a, b) = door; g.sabotage(room, 'doors', 500); place(a[0] + 0.5, a[1] + 0.5, 500); g.move(room, w, b[0] + 0.5, b[1] + 0.5, 500.5)
+check('во время аварии сквозь запертую дверь не пройти', (w['x'], w['y']) == (a[0] + 0.5, a[1] + 0.5) and w.get('moved'), door)
+g.end_sabotage(room, 501, 'Двери открылись.'); place(a[0] + 0.5, a[1] + 0.5, 501); g.move(room, w, b[0] + 0.5, b[1] + 0.5, 501.5)
+check('без аварии дверь проходима', (w['x'], w['y']) == (b[0] + 0.5, b[1] + 0.5))
+w['alive'] = False; place(thin[0] + 0.5, thin[1] + 0.5, 600); g.move(room, w, thin[0] + thin[2] + 0.5, thin[1] + 0.5, 602)
+ok_ghost = w['x'] == thin[0] + thin[2] + 0.5; place(run[0] + 0.5, run[1] + 0.5, 700); g.move(room, w, far[0] + 0.5, far[1] + 0.5, 700.23)
+check('отключённый (призрак) проходит сквозь стены, но не быстрее остальных', ok_ghost and w['x'] == run[0] + 0.5)
+# Честный браузер (те же правила, что free() в crew.js: оси по очереди, отступ 0.3 от стен) за 3 минуты игры не получает ни одного отката.
+import random as _r
+def honest(seed, doors):
+    rnd = _r.Random(seed); g, room, ps = new(6, seed); g.start(room, 100); w = next(p for p in ps if p['role'] == 'crew'); w['moved'] = False
+    if doors: g.sabotage(room, 'doors', 100); room['sabotage']['until'] = 10 ** 9
+    pos, t, sent, snaps, dx, dy = [w['x'], w['y']], 100.0, 100.0, 0, 0, 0
+    locked = lambda: room['sabotage'] and room['sabotage']['kind'] == 'doors'
+    wall = lambda x, y: not F(int(x), int(y)) or (locked() and (int(x), int(y)) in C.DOORS['station'] and (int(x), int(y)) != (int(pos[0]), int(pos[1])))
+    free = lambda x, y: not any(wall(x + a, y + b) for a in (-0.3, 0.3) for b in (-0.3, 0.3))
+    for frame in range(60 * 180):
+        if frame % 40 == 0: dx, dy = rnd.choice([(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1), (0, 0)])
+        dt = 1 / 60; t += dt; k = 0.7071 if dx and dy else 1
+        nx, ny = pos[0] + dx * k * C.SPEED * dt, pos[1] + dy * k * C.SPEED * dt
+        if free(nx, pos[1]): pos[0] = nx
+        if free(pos[0], ny): pos[1] = ny
+        if t - sent >= 0.23:
+            sent = t; arrive = t + rnd.uniform(0, 0.15)      # запрос идёт по сети с задержкой
+            if not w.get('moved'): g.move(room, w, round(pos[0], 2), round(pos[1], 2), arrive)
+            if w.pop('moved', False): snaps += 1; pos = [w['x'], w['y']]
+    return snaps
+snaps = [honest(s, d) for s in range(1, 9) for d in (False, True)]
+check('честный игрок не получает ни одного отката — ни в обычной игре, ни при запертых дверях', snaps == [0] * 16, snaps)
 print('FAILED %d' % bad if bad else 'ALL OK'); sys.exit(bad)

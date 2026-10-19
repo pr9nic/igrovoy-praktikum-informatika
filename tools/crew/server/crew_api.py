@@ -6,6 +6,7 @@
 а всё «секретное» отдаёт игроку отдельным полем secret.
 """
 import json
+import math
 import random
 import sqlite3
 from contextlib import closing
@@ -87,10 +88,13 @@ def build_world(spec):
 
 
 WORLDS = {spec['id']: build_world(spec) for spec in MAP_SPECS}
+DOORS = {k: set(w['doors']) for k, w in WORLDS.items()}   # отдельно: WORLDS уходит в браузер как JSON
 MAPS = list(WORLDS) + ['random']
 COLORS = ['#ff5a5a', '#4aa8ff', '#4ae08a', '#ffd34d', '#c98bff', '#ff9a3a', '#3ad6d6', '#ff7ab8', '#a5e04a', '#8f9bff', '#e0e0e0', '#b08a5a']
 BAD = ['дурак', 'дура', 'идиот', 'тупой', 'тупая', 'лох', 'урод', 'дебил', 'козёл', 'козел', 'сволоч', 'заткн', 'сука', 'бля', 'хер', 'хуй', 'пизд', 'еба', 'ёба', 'жоп', 'говн', 'мраз']
 DEFAULTS = {'map': 'station', 'imposters': 0, 'tasks': 5, 'meeting': 75, 'cooldown': 25, 'infect': 10, 'reveal': True, 'chat': True, 'minPlayers': 4, 'sabotage': True, 'emergency': 1, 'sabotageTime': 50, 'roles': True, 'voteStart': True}
+SPEED = 5.2               # клеток в секунду — как SPEED в crew.js
+STRIDE = 3.0              # за сколько секунд без связи сервер ещё засчитывает пройденный путь
 HOLD = 8                 # столько секунд место ученика на связи нельзя занять без ключа его вкладки
 IDLE = 2 * 3600          # комната, где два часа никого нет, начинается заново: счёт урока не переходит на следующий
 LIMITS = {'imposters': (0, 6), 'tasks': (3, 8), 'meeting': (30, 180), 'cooldown': (10, 60), 'infect': (5, 20), 'minPlayers': (3, 10), 'emergency': (0, 3), 'sabotageTime': (30, 90)}
@@ -519,6 +523,42 @@ class Game:
             self.resume(room, now)
         room['pulses'] = [x for x in room['pulses'] if now - x['t'] < 2]
 
+    # ---------- перемещение ----------
+
+    def blocked(self, room, cx, cy, start):
+        wd = WORLDS[room['map']]
+        if not (0 <= cy < wd['h'] and 0 <= cx < wd['w']) or wd['map'][cy][cx] != '.':
+            return True
+        # Запертая дверь — стена для всех, кроме того, кто уже стоит в проёме (так же считает браузер).
+        sab = room['sabotage']
+        return bool(sab and sab['kind'] == 'doors' and (cx, cy) != start and (cx, cy) in DOORS[room['map']])
+
+    def path_free(self, room, pts, start):
+        for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+            n = max(1, math.ceil(math.hypot(x1 - x0, y1 - y0) / 0.2))
+            for k in range(n + 1):
+                x, y = x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n
+                if self.blocked(room, int(x), int(y), start):
+                    return False
+        return True
+
+    def move(self, room, p, x, y, now):
+        """Шаг из браузера принимается, только если его можно пройти: не быстрее SPEED и не сквозь стены и запертые двери.
+        Иначе игрок возвращается на последнее принятое место (moved) — телепорт через devtools не работает."""
+        wd = WORLDS[room['map']]
+        if not (0 <= x < wd['w'] and 0 <= y < wd['h']) or wd['map'][int(y)][int(x)] != '.':
+            return                                   # в стену не пускаем
+        x0, y0, t0 = p['x'], p['y'], p.get('pos_t', 0)
+        reach = SPEED * (min(STRIDE, max(0, now - t0)) + 0.25) * 1.2 + 0.3   # запас: запросы приходят неровно (задержки сети)
+        start = (int(x0), int(y0))
+        # Браузер двигает по осям по очереди, поэтому за поворот засчитываем и путь «сначала по x», и «сначала по y».
+        ok = math.hypot(x - x0, y - y0) <= reach and (not p['alive'] or any(self.path_free(room, pts, start) for pts in
+              ([(x0, y0), (x, y)], [(x0, y0), (x, y0), (x, y)], [(x0, y0), (x0, y), (x, y)])))
+        if ok:
+            p['x'], p['y'], p['pos_t'] = float(x), float(y), now
+        elif math.hypot(x - x0, y - y0) > 0.05:
+            p['moved'], p['pos_t'] = True, now
+
     # ---------- действия игрока ----------
 
     def question(self, room):
@@ -849,8 +889,8 @@ def install_crew(app, journal_db=None, after_journal_change=None):
                 p['seen'] = now
                 game.syncs += 1
                 x, y = data.get('x'), data.get('y')
-                if room['phase'] == 'play' and not room['paused'] and isinstance(x, (int, float)) and isinstance(y, (int, float)) and 0 <= x < WORLDS[room['map']]['w'] and 0 <= y < WORLDS[room['map']]['h'] and WORLDS[room['map']]['map'][int(y)][int(x)] == '.' and not p.get('moved'):   # в стену не пускаем
-                    p['x'], p['y'] = float(x), float(y)
+                if room['phase'] == 'play' and not room['paused'] and type(x) in (int, float) and type(y) in (int, float) and not p.get('moved'):
+                    game.move(room, p, x, y, now)
                 acts = data.get('acts')
                 for a in acts[:8] if isinstance(acts, list) else []:
                     if isinstance(a, dict) and (not room['paused'] or a.get('t') == 'chat'):

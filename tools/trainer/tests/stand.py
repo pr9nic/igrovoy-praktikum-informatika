@@ -31,6 +31,14 @@ def test_battle_sol(cls, key):   # верный ответ на текущий �
 if not hasattr(a, 'kp_tables'):   # «Кодополия» по сети
     from kp_api import install_kodopoly; install_kodopoly(a)
 REAL = portal_security.TEACHER_IPS; portal_security.TEACHER_IPS = frozenset()
+@a.route('/test/crew/place')
+def test_crew_place():   # перенос игрока для теста: сервер «Сбоя на станции» телепорты из браузера не принимает
+    from flask import request; import time as _t
+    g = a.crew_game
+    with g.lock:
+        r = g.rooms.get(request.args.get('className')); p = r and r['players'].get(int(request.args.get('id', 0)))
+        if p: p.update(x=float(request.args['x']), y=float(request.args['y']), pos_t=_t.time(), moved=True)
+    return jsonify(ok=bool(p))
 @a.route('/test/crew/imp/<name>')
 def test_crew_imp(name): a.crew_game.force_imp = None if name == '-' else name; return jsonify(imp=name)
 @a.route('/test/teacher/<int:v>')

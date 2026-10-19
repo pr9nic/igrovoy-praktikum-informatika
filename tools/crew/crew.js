@@ -141,7 +141,8 @@
     locked = !!d.sabotage && d.sabotage.kind === 'doors'; if (camMode && (d.phase !== 'play' || d.me.quiz || !nearCams())) camMode = false;
     if (d.phase !== lastPhase) { if (d.phase === 'play' && lastPhase !== 'result' && lastPhase !== 'meeting') intro = performance.now(); lastPhase = d.phase; ui.input.blur(); }
     hud();
-    if (debugHost) window.crewGo = (x, y) => { pos.x = x; pos.y = y; };
+    // Отладочный перенос на стенде: сервер телепортов не принимает, поэтому место меняет и стенд (/test/crew/place).
+    if (debugHost) window.crewGo = async (x, y) => { await fetch('/test/crew/place?' + new URLSearchParams({className: me.className, id: me.id, x, y})).catch(() => {}); pos.x = x; pos.y = y; };
     if (debugHost) window.crew = {phase: d.phase, me: d.me, secret: d.secret, players: d.players, x: pos.x, y: pos.y, meeting: d.meeting, bodies: d.bodies, sabotage: d.sabotage, progress: d.progress, chat: chatLog.length, winner: d.winner};
   }
 
