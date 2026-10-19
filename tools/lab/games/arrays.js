@@ -29,10 +29,19 @@
   ];
   const SEEDS = [5, 17, 29];
   const sets = lv => SEEDS.map(s => lv.data(rng(s * 37 + LEVELS.indexOf(lv) * 11)));
+  // Запреты проверяются по дереву разбора программы: «for y in a:» и переменная is_sorted под запрет не попадают.
+  const BAN = {'sum(': ['sum('], 'max(': ['max('], 'index(': ['.index'], 'reverse': ['.reverse', 'reversed('], ' in a': ['in'], 'sort': ['.sort', 'sorted(']};
+  function uses(code) {
+    const out = new Set(), walk = n => { if (!n || typeof n !== 'object') return; if (Array.isArray(n)) return n.forEach(walk);
+      if (n.k === 'attr') out.add('.' + n.name); if (n.k === 'call' && n.f.k === 'name') out.add(n.f.name + '('); if (n.k === 'cmp' && n.ops.some(o => o === 'in' || o === 'not in')) out.add('in');
+      Object.values(n).forEach(walk); };
+    try { walk(PY().parse(code)); } catch { /* синтаксическую ошибку покажет запуск */ }
+    return out;
+  }
   const copy = v => Object.fromEntries(Object.entries(v).map(([k, x]) => [k, Array.isArray(x) ? x.slice() : x]));
   function check(lv, code) {
     if (typeof code !== 'string' || !code.trim()) return {ok: false, msg: 'Напиши программу.', results: []};
-    const low = code.replace(/#.*/g, ''); for (const b of lv.ban || []) if (low.includes(b)) return {ok: false, msg: `В этом задании нельзя использовать «${b.trim()}» — реши циклом.`, results: []};
+    const low = code.replace(/#.*/g, ''), used = uses(code); for (const b of lv.ban || []) if (BAN[b] ? BAN[b].some(x => used.has(x)) : low.includes(b)) return {ok: false, msg: `В этом задании нельзя использовать «${b.trim()}» — реши циклом.`, results: []};
     const results = sets(lv).map(v => { const want = String(lv.want(copy(v))); try { const got = runPy(code, copy(v)).out; return {ok: got === want, got, want, a: v.a}; } catch (e) { return {ok: false, err: (e.line ? `строка ${e.line}: ` : '') + e.message, want, a: v.a}; } });
     const good = results.filter(x => x.ok).length;
     return good === 3 ? {ok: true, stars: 3, msg: 'Программа верна на всех трёх составах.', results} : {ok: false, msg: `Верно на составах: ${good} из 3.`, results};

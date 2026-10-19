@@ -7,8 +7,8 @@
 
   /* ====================== разбор текста программы ====================== */
 
-  const TOKEN = /[ \t]+|#.*|\d+(?:\.\d+)?|[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё_0-9]*|"[^"\n]*"|'[^'\n]*'|==|!=|<=|>=|\+=|-=|\*=|\/\/|[-+*\/%()<>=\[\],.:]/y;
-  const KEYWORDS = new Set(['if', 'elif', 'else', 'while', 'for', 'in', 'def', 'return', 'break', 'continue', 'pass', 'and', 'or', 'not', 'True', 'False', 'None']);
+  const TOKEN = /[ \t]+|#.*|\d+(?:\.\d+)?|[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё_0-9]*|"[^"\n]*"|'[^'\n]*'|==|!=|<=|>=|\+=|-=|\*=|\/\/=|\/=|%=|\/\/|[-+*\/%()<>=\[\],.:]/y;
+  const KEYWORDS = new Set(['if', 'elif', 'else', 'while', 'for', 'in', 'def', 'return', 'break', 'continue', 'pass', 'and', 'or', 'not', 'is', 'True', 'False', 'None']);
 
   function tokenize(source) {
     const lines = [];
@@ -49,10 +49,17 @@
       function and() { let a = not(); while (is('and')) { p++; a = {k: 'and', a, b: not(), line}; } return a; }
       function not() { if (is('not')) { p++; return {k: 'not', a: not(), line}; } return compare(); }
       function compare() {
-        let a = sum();
-        while (peek() && peek().t !== 'str' && ['==', '!=', '<', '>', '<=', '>=', 'in'].includes(peek().v)) { const op = tokens[p++].v; a = {k: 'bin', op, a, b: sum(), line}; }
+        // Цепочка сравнений a < b <= c, как в Python: попарно, средний операнд вычисляется один раз.
+        const items = [sum()], ops = [];
+        for (;;) {
+          let op = peek() && peek().t !== 'str' && ['==', '!=', '<', '>', '<=', '>=', 'in', 'is'].includes(peek().v) ? tokens[p++].v : null;
+          if (!op && is('not') && tokens[p + 1] && tokens[p + 1].t === 'kw' && tokens[p + 1].v === 'in') { p += 2; op = 'not in'; }
+          if (!op) break;
+          if (op === 'is' && is('not')) { p++; op = 'is not'; }
+          ops.push(op); items.push(sum());
+        }
         if (is('=')) throw new PyError('Для сравнения нужны два знака равенства: ==. Один знак = — это присваивание.', line);
-        return a;
+        return ops.length ? {k: 'cmp', ops, items, line} : items[0];
       }
       function sum() { let a = product(); while (peek() && peek().t === 'op' && (peek().v === '+' || peek().v === '-')) { const op = tokens[p++].v; a = {k: 'bin', op, a, b: product(), line}; } return a; }
       function product() { let a = unary(); while (peek() && peek().t === 'op' && ['*', '/', '//', '%'].includes(peek().v)) { const op = tokens[p++].v; a = {k: 'bin', op, a, b: unary(), line}; } return a; }
@@ -83,6 +90,13 @@
       return {e, rest: tokens.slice(p)};
     }
 
+    function split(tokens) {
+      // Части через запятую вне скобок: «a, b[i]» → [a], [b[i]].
+      const out = [[]]; let depth = 0;
+      for (const x of tokens) { if (x.t === 'op' && '(['.includes(x.v)) depth++; if (x.t === 'op' && ')]'.includes(x.v)) depth--; if (x.t === 'op' && x.v === ',' && !depth) out.push([]); else out[out.length - 1].push(x); }
+      return out;
+    }
+
     function whole(tokens, line) {
       const {e, rest} = expression(tokens, line);
       if (rest.length) {
@@ -93,13 +107,18 @@
     }
 
     function header(line, word) {
-      // Заголовок блока: «слово выражение :» → токены выражения.
-      const tokens = line.tokens.slice(1), last = tokens[tokens.length - 1];
-      if (!last || last.t !== 'op' || last.v !== ':') throw new PyError(`В конце строки с «${word}» нужно двоеточие.`, line.n);
-      return tokens.slice(0, -1);
+      // Заголовок блока: «слово выражение :» → токены выражения; команда после двоеточия в той же строке — тело блока.
+      const tokens = line.tokens.slice(1), c = tokens.findIndex(x => x.t === 'op' && x.v === ':');
+      if (c < 0) throw new PyError(`В конце строки с «${word}» нужно двоеточие.`, line.n);
+      line.tail = tokens.slice(c + 1);
+      return tokens.slice(0, c);
     }
 
     function body(parent) {
+      if (parent.tail && parent.tail.length) {
+        if (parent.tail[0].t === 'kw' && ['if', 'elif', 'else', 'while', 'for', 'def'].includes(parent.tail[0].v)) throw new PyError(`«${parent.tail[0].v}» после двоеточия перенесите на новую строку с отступом.`, parent.n);
+        return [statement({n: parent.n, indent: parent.indent + 1, tokens: parent.tail})];
+      }
       const next = lines[li];
       if (!next || next.indent <= parent.indent) throw new PyError('После двоеточия нужна хотя бы одна команда с отступом (4 пробела).', parent.n);
       return block(next.indent);
@@ -147,11 +166,14 @@
         if (first.v === 'break' || first.v === 'continue' || first.v === 'pass') { if (t.length > 1) throw new PyError(`После ${first.v} в строке ничего не пишут.`, n); return {k: first.v, line: n}; }
       }
       if (t[t.length - 1].t === 'op' && t[t.length - 1].v === ':') throw new PyError('Двоеточие ставится только после if, elif, else, while, for и def.', n);
-      const eq = t.findIndex(x => x.t === 'op' && ['=', '+=', '-=', '*='].includes(x.v));
+      const eq = t.findIndex(x => x.t === 'op' && ['=', '+=', '-=', '*=', '/=', '//=', '%='].includes(x.v));
       if (eq > 0) {
-        const target = whole(t.slice(0, eq), n);
-        if (target.k !== 'name' && target.k !== 'index') throw new PyError('Слева от знака = должно стоять имя переменной.', n);
-        return {k: 'assign', line: n, op: t[eq].v, target, value: whole(t.slice(eq + 1), n)};
+        const left = split(t.slice(0, eq)).map(x => whole(x, n));
+        if (left.some(x => x.k !== 'name' && x.k !== 'index')) throw new PyError('Слева от знака = должно стоять имя переменной.', n);
+        if (left.length === 1) return {k: 'assign', line: n, op: t[eq].v, target: left[0], value: whole(t.slice(eq + 1), n)};
+        // a, b = b, a: сначала вычисляются все значения справа, потом присваиваются по порядку.
+        if (t[eq].v !== '=') throw new PyError(`Знак ${t[eq].v} работает только с одной переменной.`, n);
+        return {k: 'multi', line: n, targets: left, values: split(t.slice(eq + 1)).map(x => whole(x, n))};
       }
       const e = whole(t, n);
       if (e.k === 'attr') throw new PyError(`Чтобы выполнить команду, добавьте скобки: ${t.map(x => x.v).join('')}()`, n);
@@ -191,7 +213,7 @@
     return {
       range: fn('range', (args, line) => {
         if (args.length < 1 || args.length > 3 || args.some(a => typeof a !== 'number')) throw new PyError('range ждёт число: range(3) даст 0, 1, 2.', line);
-        const [a, b, step] = args.length === 1 ? [0, args[0], 1] : [args[0], args[1], args[2] || 1];
+        const [a, b, step] = args.length === 1 ? [0, args[0], 1] : [args[0], args[1], args.length === 3 ? args[2] : 1];
         if (!step) throw new PyError('Шаг в range не может быть нулём.', line);
         const out = []; for (let i = a; step > 0 ? i < b : i > b; i += step) { out.push(i); if (out.length > 10000) throw new PyError('Слишком длинный range.', line); }
         return out;
@@ -202,6 +224,7 @@
       abs: fn('abs', args => Math.abs(args[0])),
       min: fn('min', args => Math.min(...(Array.isArray(args[0]) ? args[0] : args))),
       max: fn('max', args => Math.max(...(Array.isArray(args[0]) ? args[0] : args))),
+      sum: fn('sum', (args, line) => { if (!Array.isArray(args[0]) || args[0].some(x => typeof x !== 'number')) throw new PyError('sum складывает числа списка: sum(список).', line); return args[0].reduce((s, x) => s + x, 0); }),
     };
   }
 
@@ -227,9 +250,17 @@
       case 'expr': yield* evaluate(st.e, env, ctx); return null;
       case 'assign': {
         let value = yield* evaluate(st.value, env, ctx);
-        if (st.op !== '=') { const old = yield* evaluate(st.target, env, ctx); value = arith(st.op[0], old, value, st.line); }
-        if (st.target.k === 'name') { let e = env; while (e.parent && !(st.target.name in e.vars)) e = e.parent; (st.target.name in e.vars ? e : env).vars[st.target.name] = value; }
-        else { const list = yield* evaluate(st.target.a, env, ctx), i = yield* evaluate(st.target.i, env, ctx); if (!Array.isArray(list)) throw new PyError('По номеру можно менять только элементы списка.', st.line); list[index(list, i, st.line)] = value; }
+        // Как в Python: присваивание внутри функции создаёт её собственную (локальную) переменную.
+        if (st.op !== '=' && st.target.k === 'name' && env.parent && !(st.target.name in env.vars)) throw new PyError(`Переменная «${st.target.name}» внутри функции своя, и значения у неё ещё нет. Задайте его в функции или передайте параметром, а результат верните через return.`, st.line);
+        if (st.op !== '=') { const old = yield* evaluate(st.target, env, ctx); value = arith(st.op.slice(0, -1), old, value, st.line); }
+        yield* store(st.target, value, env, ctx, st.line);
+        return null;
+      }
+      case 'multi': {
+        let values = []; for (const v of st.values) values.push(yield* evaluate(v, env, ctx));
+        if (values.length === 1 && (Array.isArray(values[0]) || typeof values[0] === 'string')) values = [...values[0]];
+        if (values.length !== st.targets.length) throw new PyError(`Слева от = переменных: ${st.targets.length}, а значений справа: ${values.length}. Их должно быть поровну.`, st.line);
+        for (const [i, t] of st.targets.entries()) yield* store(t, values[i], env, ctx, st.line);
         return null;
       }
       case 'if':
@@ -265,6 +296,13 @@
     return null;
   }
 
+  function* store(target, value, env, ctx, line) {
+    if (target.k === 'name') { env.vars[target.name] = value; return; }
+    const list = yield* evaluate(target.a, env, ctx), i = yield* evaluate(target.i, env, ctx);
+    if (!Array.isArray(list)) throw new PyError('По номеру можно менять только элементы списка.', line);
+    list[index(list, i, line)] = value;
+  }
+
   function index(list, i, line) {
     if (typeof i !== 'number' || !Number.isInteger(i)) throw new PyError('Номер элемента должен быть целым числом.', line);
     const at = i < 0 ? list.length + i : i;
@@ -272,15 +310,36 @@
     return at;
   }
 
+  const MAXLEN = 1e6, long = (n, line) => { if (n > MAXLEN) throw new PyError('Получается слишком длинная строка или список: больше миллиона элементов.', line); };
   function arith(op, a, b, line) {
     if (op === '+') {
-      if (typeof a === 'string' && typeof b === 'string') return a + b;
-      if (Array.isArray(a) && Array.isArray(b)) return a.concat(b);
+      if (typeof a === 'string' && typeof b === 'string') { long(a.length + b.length, line); return a + b; }
+      if (Array.isArray(a) && Array.isArray(b)) { long(a.length + b.length, line); return a.concat(b); }
       if (typeof a === 'string' || typeof b === 'string') throw new PyError('Строку нельзя сложить с числом. Превратите число в строку: str(число).', line);
+    }
+    if (op === '*' && (typeof a === 'number' || typeof b === 'number')) {
+      // Повторение: "ха" * 3, [0] * 4; при n <= 0 — пусто.
+      const [s, n] = typeof a === 'number' ? [b, a] : [a, b];
+      if (typeof s === 'string' || Array.isArray(s)) {
+        if (!Number.isInteger(n)) throw new PyError('Строку или список можно умножить только на целое число.', line);
+        const k = s.length ? Math.max(0, n) : 0; long(s.length * k, line);
+        if (typeof s === 'string') return s.repeat(k);
+        const out = []; for (let i = 0; i < k; i++) out.push(...s); return out;
+      }
     }
     if (typeof a !== 'number' || typeof b !== 'number') throw new PyError(`Действие «${op}» не подходит для: ${typeName(a)} и ${typeName(b)}.`, line);
     if ((op === '/' || op === '//' || op === '%') && b === 0) throw new PyError('Деление на ноль.', line);
     return op === '+' ? a + b : op === '-' ? a - b : op === '*' ? a * b : op === '/' ? a / b : op === '//' ? Math.floor(a / b) : a - b * Math.floor(a / b);
+  }
+
+  const same = (a, b) => a === b || (a == null && b == null), eq = (a, b) => same(a, b) || (Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => eq(x, b[i])));
+  function compare(op, a, b, line) {
+    if (op === '==' || op === '!=') return eq(a, b) === (op === '==');
+    if (op === 'is' || op === 'is not') return same(a, b) === (op === 'is');
+    if (op === 'in' || op === 'not in') { if (!Array.isArray(b) && typeof b !== 'string') throw new PyError(`Справа от ${op} должен стоять список или строка.`, line); return (Array.isArray(b) ? b.some(x => eq(x, a)) : b.includes(a)) === (op === 'in'); }
+    if (a === null || b === null) throw new PyError('Сравнивать с None нельзя: такого объекта сейчас нет. Сначала проверьте его: if enemy:', line);
+    if (typeof a !== typeof b || (typeof a !== 'number' && typeof a !== 'string')) throw new PyError(`Нельзя сравнить: ${typeName(a)} и ${typeName(b)}.`, line);
+    return op === '<' ? a < b : op === '>' ? a > b : op === '<=' ? a <= b : a >= b;
   }
 
   function* evaluate(e, env, ctx) {
@@ -292,17 +351,11 @@
       case 'not': return !truthy(yield* evaluate(e.a, env, ctx));
       case 'and': { const a = yield* evaluate(e.a, env, ctx); return truthy(a) ? yield* evaluate(e.b, env, ctx) : a; }
       case 'or': { const a = yield* evaluate(e.a, env, ctx); return truthy(a) ? a : yield* evaluate(e.b, env, ctx); }
-      case 'bin': {
-        const a = yield* evaluate(e.a, env, ctx), b = yield* evaluate(e.b, env, ctx);
-        if (e.op === '==') return a === b;
-        if (e.op === '!=') return a !== b;
-        if (e.op === 'in') { if (!Array.isArray(b) && typeof b !== 'string') throw new PyError('Справа от in должен стоять список или строка.', e.line); return b.includes(a); }
-        if (['<', '>', '<=', '>='].includes(e.op)) {
-          if (a === null || b === null) throw new PyError('Сравнивать с None нельзя: такого объекта сейчас нет. Сначала проверьте его: if enemy:', e.line);
-          if (typeof a !== typeof b || (typeof a !== 'number' && typeof a !== 'string')) throw new PyError(`Нельзя сравнить: ${typeName(a)} и ${typeName(b)}.`, e.line);
-          return e.op === '<' ? a < b : e.op === '>' ? a > b : e.op === '<=' ? a <= b : a >= b;
-        }
-        return arith(e.op, a, b, e.line);
+      case 'bin': { const a = yield* evaluate(e.a, env, ctx), b = yield* evaluate(e.b, env, ctx); return arith(e.op, a, b, e.line); }
+      case 'cmp': {
+        let a = yield* evaluate(e.items[0], env, ctx);
+        for (let i = 0; i < e.ops.length; i++) { const b = yield* evaluate(e.items[i + 1], env, ctx); if (!compare(e.ops[i], a, b, e.line)) return false; a = b; }
+        return true;
       }
       case 'index': {
         const a = yield* evaluate(e.a, env, ctx), i = yield* evaluate(e.i, env, ctx);
@@ -313,7 +366,7 @@
         const a = yield* evaluate(e.a, env, ctx);
         if (a === null || a === undefined) throw new PyError(`У None нет свойства ${e.name}: объекта сейчас нет. Сначала проверьте, что он найден: if enemy:`, e.line);
         if (a && a.members) {
-          if (e.name in a.members) { const m = a.members[e.name]; return typeof m === 'function' && !m.method ? m() : m; }
+          if (Object.prototype.hasOwnProperty.call(a.members, e.name)) { const m = a.members[e.name]; return typeof m === 'function' && !m.method ? m() : m; }
           const near = closest(e.name, Object.keys(a.members));
           throw new PyError(`У ${a.title || 'объекта'} нет ${e.name}.` + (near ? ` Может быть, ${near}? Регистр букв важен.` : ''), e.line);
         }

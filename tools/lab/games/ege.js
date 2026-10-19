@@ -66,8 +66,9 @@
           [`(ДЕЛ(x, A) ∧ ¬ДЕЛ(x, ${q})) → (¬ДЕЛ(x, A) ∨ ДЕЛ(x, ${p}))`, (x, A) => !(x % A === 0 && x % q !== 0) || (x % A !== 0 || x % p === 0), 'наименьшего'],
           [`ДЕЛ(x, A) ∨ (ДЕЛ(x, ${p}) → ¬ДЕЛ(x, ${q}))`, (x, A) => x % A === 0 || !(x % p === 0) || x % q !== 0, 'наибольшего']];
         const [f, fn, ask] = pick(forms), ok = A => { for (let x = 1; x <= 1000; x++) if (!fn(x, A)) return false; return true; };
-        const good = []; for (let A = 1; A <= 300; A++) if (ok(A)) good.push(A);
-        if (!good.length || (ask === 'наибольшего' && good[good.length - 1] === 300)) continue;
+        // A перебираем, как и x, до 1000: НОК(p, q) ≤ 360, так что настоящий ответ всегда попадает в перебор.
+        const good = []; for (let A = 1; A <= 1000; A++) if (ok(A)) good.push(A);
+        if (!good.length || (ask === 'наибольшего' && good[good.length - 1] === 1000)) continue;
         const ans = ask === 'наименьшего' ? good[0] : good[good.length - 1]; if (ans === 1 && ask === 'наименьшего') continue;
         return {text: `ДЕЛ(n, m) означает «натуральное n делится без остатка на натуральное m». Для какого ${ask} натурального A формула\n${f}\nтождественно истинна (то есть принимает значение 1 при любом натуральном x)?`, answer: ans,
           explain: `Перебираем A и проверяем формулу для всех x до 1000. Подходят A = ${good.slice(0, 5).join(', ')}${good.length > 5 ? ', …' : ''}; ${ask} — ${ans}.`}; } },
