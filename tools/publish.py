@@ -211,7 +211,7 @@ def render(data,attachments,output):
         pr['version']=hashlib.sha256((ROOT/'godot'/pr['godotProject']/'export'/'index.pck').read_bytes()).hexdigest()[:10];pr['gameUrl']='/courses/'+pr['godotHost']+'/game/index.html'
         pr['artVersion']=hashlib.sha256(b''.join(f.read_bytes() for f in sorted((engine/'art').glob('cover_*.webp'))+sorted((engine/'art').glob('link_*.webp'))+sorted((Path(__file__).with_name('lab')/'art').glob('cover_*.webp')))).hexdigest()[:8]
         encoded=json.dumps(public,ensure_ascii=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
-        names=['battle.js','battle_play.js','battle_teach.js','practicum.js','practicum.css','battle.css']
+        names=['battle_logic.js','battle.js','battle_play.js','battle_teach.js','practicum.js','practicum.css','battle.css']
         version=hashlib.sha256(b''.join((engine/n).read_bytes() for n in names)).hexdigest()[:10]
         for name in names:shutil.copyfile(engine/name,output/name)
         (output/'art'/'bt').mkdir(parents=True,exist_ok=True)
@@ -219,7 +219,7 @@ def render(data,attachments,output):
         covers=sorted((engine/'art').glob('cover_*.webp'))+sorted((engine/'art').glob('link_*.webp'))+sorted((engine/'art').glob('badge_*.webp'))+sorted((engine/'art').glob('avatar_*.webp'))+sorted((engine/'art').glob('season_*.webp'))+sorted((Path(__file__).with_name('lab')/'art').glob('cover_*.webp'))
         (output/'art').mkdir(exist_ok=True)
         for f in covers:shutil.copyfile(f,output/'art'/f.name)
-        page=page.replace('<script defer src="/portal/game.js?v=20261006"></script>',''.join('<script defer src="%s?v=%s"></script>'%(n,version) for n in ['battle.js','battle_play.js','battle_teach.js','practicum.js'])).replace('/portal/game.css?v=20261006','practicum.css?v='+version+'"><link rel="stylesheet" href="battle.css?v='+version).replace('class="game-wrap" id="game"','class="game-wrap" id="practicum"')
+        page=page.replace('<script defer src="/portal/game.js?v=20261006"></script>',''.join('<script defer src="%s?v=%s"></script>'%(n,version) for n in ['battle_logic.js','battle.js','battle_play.js','battle_teach.js','practicum.js'])).replace('/portal/game.css?v=20261006','practicum.css?v='+version+'"><link rel="stylesheet" href="battle.css?v='+version).replace('class="game-wrap" id="game"','class="game-wrap" id="practicum"')
     if data.get('gameMode')=='godot':
         export=ROOT/'godot'/data['godotProject']/'export';frame='game/index.html'
         if data.get('godotHost'):frame='/courses/'+data['godotHost']+'/game/index.html'
