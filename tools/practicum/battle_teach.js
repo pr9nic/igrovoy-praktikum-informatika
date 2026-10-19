@@ -243,7 +243,8 @@
           box.append(c); } gallery.append(box); });
       const csv = btn('⬇ Таблица CSV (Excel)', 'p-small', () => { const rows = [['Ученик', 'Очки', 'Точность %', 'Освоено %', 'Команда', ...qs.map((q, i) => `${i + 1}. ${(q.text || TYPES[q.type]).slice(0, 40)}`)]];
         for (const p of ps) rows.push([p.name, p.score, p.acc, p.mastery ?? '', p.team || '', ...qs.map(q => { const a = p.answers[q.id]; return a ? (a.teacher != null ? (a.teacher ? 'верно' : 'неверно') : a.frac == null ? a.text : Math.round(100 * a.frac) + '%') : ''; })]);
-        const text = '﻿' + rows.map(r2 => r2.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n'); const a = h('a'); a.href = URL.createObjectURL(new Blob([text], {type: 'text/csv'})); a.download = `${r.cls} ${r.title}.csv`.replace(/[\\/:*?"<>|]/g, '_'); a.click(); });
+        const cell = v => (typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? "'" + v : String(v)).replace(/"/g, '""');   // ответ «=HYPERLINK(…)» Excel не примет за формулу
+        const text = '﻿' + rows.map(r2 => r2.map(v => `"${cell(v)}"`).join(';')).join('\r\n'); const a = h('a'); a.href = URL.createObjectURL(new Blob([text], {type: 'text/csv'})); a.download = `${r.cls} ${r.title}.csv`.replace(/[\\/:*?"<>|]/g, '_'); a.click(); });
       const del = btn('🗑 Удалить отчёт', 'p-small', async () => { if (confirm('Удалить этот отчёт?')) { await API('dropresult', {id}); reports(); } });
       const titles = h('div', 'bt2-titles'); for (const t of r.titles || []) { const c = h('div'); c.append(h('b', '', t.title), h('span', '', t.name)); titles.append(c); }
       const head = h('div', 'btt-row'); head.append(btn('← Все отчёты', 'p-small', reports), csv, btn('🖨 Печать', 'p-small', () => print()), del);
