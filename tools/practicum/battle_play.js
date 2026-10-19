@@ -8,7 +8,9 @@
 
   async function student(ctx) {
     stop(); const run = alive, {root, player} = ctx;
-    let me; try { me = await API('join', {className: player.className, name: player.name}); } catch (e) { alert('Не удалось войти в игру: ' + e.message); ctx.leave(); return; }
+    // ключ входа хранится во вкладке: после обновления страницы пустят обратно, чужой вход с тем же именем — нет
+    let me, was = ''; try { was = sessionStorage.getItem('school4-bt-token') || ''; } catch {}
+    try { me = await API('join', {className: player.className, name: player.name, token: was}); try { sessionStorage.setItem('school4-bt-token', me.token); } catch {} } catch (e) { alert('Не удалось войти в игру: ' + e.message); ctx.leave(); return; }
     Sound.init();
     const page = h('section', 'bt2'), top = h('div', 'bt2-top'), stage = h('div', 'bt2-stage'), main = h('div', 'bt2-main'), side = h('aside', 'bt2-side'), toasts = h('div', 'bt2-toasts'), pause = h('div', 'bt2-pause');
     const back = btn('← К играм', 'p-small', () => { stop(); ctx.leave(); }); back.dataset.act = 'bt-back';
@@ -20,9 +22,9 @@
     const toast = (text, cls = '') => { const t = h('div', 'bt2-toast ' + cls, text); toasts.append(t); setTimeout(() => t.remove(), 4200); };
 
     async function sync() {
-      if (run !== alive || busy) return; busy = true;
-      try { d = await S('sync'); } catch (e) { busy = false; if (e.status === 404 || e.status === 403) { stop(); main.replaceChildren(h('h2', '', e.status === 403 ? 'Ты больше не в игре.' : 'Учитель закрыл игру.'), btn('← К играм', 'p-primary', () => ctx.leave())); side.replaceChildren(); } return; }
-      busy = false; if (run !== alive) return; render(); }
+      if (run !== alive || busy) return; busy = true; const ready = !feedback;   // во время разбора ответа следующий вопрос не берём: его часы пошли бы раньше показа
+      try { d = await S('sync', {ready}); } catch (e) { busy = false; if (e.status === 404 || e.status === 403) { stop(); main.replaceChildren(h('h2', '', e.status === 403 ? 'Ты больше не в игре.' : 'Учитель закрыл игру.'), btn('← К играм', 'p-primary', () => ctx.leave())); side.replaceChildren(); } return; }
+      busy = false; if (run !== alive) return; if (!ready && !feedback) return sync(); render(); }
 
     function render() {
       title.textContent = d.title; page.dataset.mode = d.mode; page.dataset.phase = d.phase;
@@ -81,7 +83,7 @@
     }
 
     async function answer(q, ans, timeout = false) {
-      if (feedback) return; feedback = true; clearInterval(tick); main.querySelectorAll('button, input, textarea, select').forEach(x => { if (!x.closest('.bt2-tools')) x.disabled = true; });
+      if (feedback) return; feedback = true; clearInterval(tick); main.querySelectorAll('button, input, textarea, select').forEach(x => { x.disabled = true; });   // и усилители: вопрос уже отвечен
       let r; try { r = await S('answer', {q: q.id, answer: ans}); } catch (e) { feedback = false; toast(e.message); shown = ''; return sync(); }
       if (r.retry) { feedback = false; toast('🛡 ' + r.msg, 'ev-power'); shown = ''; return sync(); }
       if (d.mode === 'paced') { main.replaceChildren(h('div', 'bt2-wait', '✔ Ответ принят! Ждём остальных…')); feedback = false; view = 'paced-wait'; shown = q.id + 'done'; return; }

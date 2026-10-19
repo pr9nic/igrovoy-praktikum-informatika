@@ -58,24 +58,32 @@ def norm(s):
     return re.sub(r'\s+', ' ', str(s).strip().lower().replace('ё', 'е')).strip(' .,!?;:«»"\'')
 
 
+def anyorder(key):
+    """«Аня Отличница» и «Отличница Аня» — один ученик (для списка убранных)."""
+    return ' '.join(sorted(key.split()))
+
+
+def same(token, given):
+    return isinstance(given, str) and secrets.compare_digest(token.encode(), given.encode('utf-8', 'replace'))
+
+
 def short(name):
     p = str(name).split()
     return f'{p[1]} {p[0][0]}.' if len(p) >= 2 else str(name)
 
 
+NUMBER = re.compile(r'[-+]?(\d+/\d+|(\d+\.?\d*|\.\d+)(e[-+]?\d{1,3})?)', re.I)   # порядок до трёх цифр: Fraction('1e10000000') считает секунды
+
+
 def number(s):
     """Число из ответа ученика: «3,5», «-2», «1/4», «1e3»."""
     s = str(s).strip().replace(' ', '').replace(',', '.').replace('−', '-')
-    if not s or len(s) > 40:
+    if len(s) > 40 or not NUMBER.fullmatch(s):
         return None
     try:
         return float(Fraction(s))
-    except (ValueError, ZeroDivisionError):
-        try:
-            v = float(s)
-            return v if v == v and abs(v) != float('inf') else None
-        except ValueError:
-            return None
+    except (ValueError, ArithmeticError):
+        return None
 
 
 # ---------- проверка викторины из редактора ----------
@@ -97,6 +105,17 @@ def pct(v, name):
     return round(float(v), 2)
 
 
+def whole(v, name):
+    try:
+        return int(v)
+    except (TypeError, ValueError, OverflowError):
+        raise Refused(f'{name}: ожидается целое число')
+
+
+def dicts(v):
+    return isinstance(v, list) and all(isinstance(x, dict) for x in v)
+
+
 BLANK = re.compile(r'\[\[([^\[\]]{1,60})\]\]')
 DROP = re.compile(r'\{\{([^{}]{1,200})\}\}')
 
@@ -107,7 +126,7 @@ def clean_question(q, i):
     need(t in TYPES, f'Вопрос {i}: неизвестный тип')
     name = f'Вопрос {i}'
     out = {'id': str(q.get('id') or secrets.token_hex(4))[:16], 'type': t, 'text': text(q.get('text', ''), name, 600, empty=t in ('dragdrop', 'dropdown')),
-           'time': int(q.get('time', 30)), 'weight': int(q.get('weight', 1)), 'explain': text(q.get('explain', ''), name + ': пояснение', 500, empty=True)}
+           'time': whole(q.get('time', 30), name + ': время'), 'weight': whole(q.get('weight', 1), name + ': баллы'), 'explain': text(q.get('explain', ''), name + ': пояснение', 500, empty=True)}
     need(5 <= out['time'] <= 300, f'{name}: время от 5 до 300 секунд')
     need(1 <= out['weight'] <= 10, f'{name}: баллы от 1 до 10')
     img = q.get('image') or ''
@@ -142,7 +161,7 @@ def clean_question(q, i):
         out['items'] = strings(q.get('items'), name, 2, 8, 120)
     elif t == 'categorize':
         cats = q.get('cats')
-        need(isinstance(cats, list) and 2 <= len(cats) <= 4, f'{name}: от 2 до 4 групп')
+        need(dicts(cats) and 2 <= len(cats) <= 4, f'{name}: от 2 до 4 групп')
         out['cats'] = [{'name': text(c.get('name', ''), name, 60), 'items': strings(c.get('items'), name + ': элементы группы', 1, 6, 80)} for c in cats]
         allitems = [norm(x) for c in out['cats'] for x in c['items']]
         need(len(allitems) <= 16 and len(set(allitems)) == len(allitems), f'{name}: до 16 разных элементов')
@@ -159,12 +178,12 @@ def clean_question(q, i):
     elif t == 'label':
         need('image' in out, f'{name}: нужна картинка')
         s = q.get('spots')
-        need(isinstance(s, list) and 2 <= len(s) <= 8, f'{name}: от 2 до 8 подписей')
+        need(dicts(s) and 2 <= len(s) <= 8, f'{name}: от 2 до 8 подписей')
         out['spots'] = [{'text': text(x.get('text', ''), name, 60), 'x': pct(x.get('x'), name), 'y': pct(x.get('y'), name)} for x in s]
     elif t == 'hotspot':
         need('image' in out, f'{name}: нужна картинка')
         s = q.get('spots')
-        need(isinstance(s, list) and 1 <= len(s) <= 4, f'{name}: от 1 до 4 верных областей')
+        need(dicts(s) and 1 <= len(s) <= 4, f'{name}: от 1 до 4 верных областей')
         out['spots'] = [{'x': pct(x.get('x'), name), 'y': pct(x.get('y'), name), 'r': pct(x.get('r', 8), name)} for x in s]
     elif t == 'graph':
         pts = q.get('points')
@@ -178,7 +197,7 @@ def clean_quiz(d):
     need(isinstance(d, dict), 'Ожидается викторина.')
     qs = d.get('questions')
     need(isinstance(qs, list) and 1 <= len(qs) <= 60, 'В викторине от 1 до 60 вопросов.')
-    grade = int(d.get('grade') or 0)
+    grade = whole(d.get('grade') or 0, 'Класс')
     need(grade == 0 or 6 <= grade <= 11, 'Класс: 6–11 или 0 — для всех.')
     out = {'title': text(d.get('title', ''), 'Название', 100), 'grade': grade, 'questions': [clean_question(q, i + 1) for i, q in enumerate(qs)]}
     ids = [q['id'] for q in out['questions']]
@@ -325,7 +344,7 @@ def grade(q, key, ans):
             got = {(int(p[0]), int(p[1])) for p in ans}
             right = {tuple(p) for p in q['points']}
             return len(got & right) / len(right) if len(got) <= len(right) else max(0.0, (len(got & right) - (len(got) - len(right))) / len(right))
-    except (TypeError, ValueError, KeyError, IndexError):
+    except (TypeError, ValueError, KeyError, IndexError, ArithmeticError):     # 1e400 из JSON — бесконечность
         return 0.0
     return 0.0
 
@@ -348,9 +367,24 @@ def answer_text(q, key, ans):
             return ', '.join(f'({int(p[0])}; {int(p[1])})' for p in ans)
         if t == 'reorder':
             return ' → '.join(q['items'][key['i'][int(x)]] for x in ans)
-    except (TypeError, ValueError, KeyError, IndexError):
+    except (TypeError, ValueError, KeyError, IndexError, ArithmeticError):
         return '—'
     return '[ответ]'
+
+
+def fits(t, ans):
+    """Ответ ученика нужного вида и размера; None — время вышло."""
+    if ans is None or t == 'slide':
+        return True
+    if t in ('fill', 'math', 'open', 'cloud', 'draw'):
+        return isinstance(ans, str)
+    if t in ('single', 'poll'):
+        return isinstance(ans, int)
+    if t == 'hotspot':
+        return isinstance(ans, dict) and len(ans) == 2 and all(isinstance(ans.get(k), (int, float)) for k in 'xy')
+    if t == 'graph':
+        return isinstance(ans, list) and len(ans) <= 16 and all(isinstance(x, list) and len(x) == 2 and all(isinstance(v, int) for v in x) for x in ans)
+    return isinstance(ans, list) and len(ans) <= 16 and all(x is None or isinstance(x, int) for x in ans)
 
 
 def eliminate(q, key, n, rnd):
@@ -488,7 +522,7 @@ class Battle:
         qs = quiz['questions']
         r = {'cls': cls, 'quiz': quiz, 'qmap': {q['id']: q for q in qs}, 'mode': mode, 'settings': st, 'phase': 'lobby', 'opened': now, 'started': 0,
              'paused': False, 'paused_at': 0, 'players': {}, 'events': [], 'ev_id': 0, 'powerplay_until': 0, 'cur': -1, 'cur_start': 0, 'reveal': False,
-             'result_id': None, 'kicked': set()}
+             'result_id': None, 'kicked': set(), 'salt': secrets.token_hex(16)}     # соль перестановок ученику не уходит, иначе ответы вычисляются
         self.rooms[cls] = r
         return r
 
@@ -497,16 +531,19 @@ class Battle:
         r['events'].append({'id': r['ev_id'], 'kind': kind, 'text': text, 'who': who, 'at': now or time.time()})
         del r['events'][:-30]
 
-    def join(self, cls, name, now):
+    def join(self, cls, name, now, token=None):
         r = self.room(cls)
         name = re.sub(r'\s+', ' ', str(name or '').strip())
-        need(5 <= len(name) <= 80 and ' ' in name, 'Укажите фамилию и имя.')
+        need(5 <= len(name) <= 80 and ' ' in name and not any(ord(c) < 32 or '\ud800' <= c <= '\udfff' for c in name), 'Укажите фамилию и имя.')   # суррогат не записать в battle.db
         key = norm(name)
-        if key in r['kicked']:
+        if anyorder(key) in r['kicked']:
             raise Refused('Учитель убрал тебя из этой игры.', 403)
         p = r['players'].get(key)
         if p:
-            p['seen'] = now
+            # то же имя с другого компьютера, пока прежний вход на связи, — только с прежним ключом (обновление страницы)
+            if now - p['seen'] < 8 and not same(p['token'], token):
+                raise Refused('Ты уже в игре с другого компьютера. Если это не ты — скажи учителю.', 409)
+            p['token'], p['seen'] = secrets.token_urlsafe(12), now
             return r, p
         need(len(r['players']) < 45, 'В игре уже 45 участников.')
         teams = r['settings']['teams']
@@ -520,7 +557,7 @@ class Battle:
 
     def reset_player(self, r, p, now):
         qs = [q['id'] for q in r['quiz']['questions']]
-        rnd = random.Random(f"{p['key']}:{p['attempt']}:{r['opened']}")
+        rnd = random.Random(f"{r['salt']}:{p['key']}:{p['attempt']}:{r['opened']}")
         if r['settings']['shuffleQ'] and r['mode'] not in ('paced',):
             slides = r['mode'] == 'peak'
             qs = [q for q in qs if not (slides and r['qmap'][q]['type'] == 'slide')]
@@ -532,7 +569,7 @@ class Battle:
     def who(self, cls, key, token):
         r = self.room(cls)
         p = r['players'].get(norm(key or ''))
-        if not p or not isinstance(token, str) or not secrets.compare_digest(p['token'].encode(), token.encode()):
+        if not p or not same(p['token'], token):
             raise Refused('Нужно войти в игру заново.', 403)
         return r, p
 
@@ -560,7 +597,7 @@ class Battle:
     def question(self, r, p, qid, now):
         q = r['qmap'][qid]
         if qid not in p['keys'] or (r['mode'] == 'peak' and p['shown'].get(qid, 0) == 0):
-            rnd = random.Random(f"{p['key']}:{qid}:{p['attempts'].get(qid, 0)}:{p['attempt']}:{r['opened']}")
+            rnd = random.Random(f"{r['salt']}:{p['key']}:{qid}:{p['attempts'].get(qid, 0)}:{p['attempt']}:{r['opened']}")
             v, key = view(q, rnd, r['settings']['shuffleOpts'])
             p['keys'][qid] = {'key': key, 'view': v, 'removed': []}
         if not p['shown'].get(qid):
@@ -610,10 +647,12 @@ class Battle:
         cur = self.current(r, p)
         need(cur == qid, 'Этот вопрос уже не актуален.')
         q = r['qmap'][qid]
+        need(fits(q['type'], ans), 'Ответ не распознан — обнови страницу.')
         if q['type'] == 'draw':
-            need(isinstance(ans, str) and len(ans) <= 300000 and (ans == '' or DATA_URL.fullmatch(ans)), 'Рисунок слишком большой.')
+            need(ans is None or len(ans) <= 300000 and (ans == '' or DATA_URL.fullmatch(ans)), 'Рисунок слишком большой.')
         elif isinstance(ans, str):
             ans = ans[:600]
+        need(p['shown'].get(qid), 'Этот вопрос ещё не показан.')
         k = p['keys'][qid]
         limit = self.limit(r, p, q)
         elapsed = now - p['shown'].get(qid, now)
@@ -621,6 +660,7 @@ class Battle:
         frac = 0.0 if late and q['type'] not in UNGRADED else grade(q, k['key'], ans)
         if q['type'] == 'cloud' and isinstance(ans, str):
             ans = ' '.join(ans.split()[:3])[:40]
+        txt = answer_text(q, k['key'], ans)     # до изменения состояния ученика
         immune = 'immunity' in p['effects'] and frac is not None and frac < 1 and not late
         if immune:
             p['effects'].pop('immunity')
@@ -648,8 +688,8 @@ class Battle:
         p['score'] = max(0, p['score'] + pts)
         p['attempts'][qid] = p['attempts'].get(qid, 0) + 1
         rec = p['answers'].setdefault(qid, {'tries': []})
-        rec['tries'].append({'frac': frac, 'time': round(elapsed, 1), 'text': answer_text(q, k['key'], ans), 'late': late})
-        rec.update(frac=frac, pts=rec.get('pts', 0) + pts, time=round(elapsed, 1), text=answer_text(q, k['key'], ans))
+        rec['tries'].append({'frac': frac, 'time': round(elapsed, 1), 'text': txt, 'late': late})
+        rec.update(frac=frac, pts=rec.get('pts', 0) + pts, time=round(elapsed, 1), text=txt)
         if q['type'] == 'draw':
             rec['draw'] = ans
         if q['type'] in ('open', 'cloud', 'poll'):
@@ -727,6 +767,7 @@ class Battle:
         need(kind in p['inventory'], 'Такого усилителя нет.')
         qid = self.current(r, p)
         need(qid or kind in ('gift', 'glitch', 'powerplay', 'streak_boost', 'streak_saver', 'supersonic'), 'Усилитель действует на вопрос — дождись вопроса.')
+        need(kind not in ('fifty', 'eraser') or p['shown'].get(qid), 'Усилитель действует на вопрос — дождись вопроса.')
         p['inventory'].remove(kind)
         out = {'kind': kind}
         if kind in ('fifty', 'eraser'):
@@ -762,9 +803,10 @@ class Battle:
 
     def take_break(self, r, p, pick, mini_score):
         need(p['brk'], 'Привала нет.')
+        need(mini_score is None or isinstance(mini_score, (int, float)) and mini_score == mini_score and abs(mini_score) < 1e9, 'Счёт мини-игры — число.')
+        bonus = max(0, min(300, int(mini_score or 0)))
         if pick in p['brk']['offers'] and len(p['inventory']) < 3:
             p['inventory'].append(pick)
-        bonus = max(0, min(300, int(mini_score or 0)))
         p['mini_bonus'] += bonus
         p['score'] += bonus
         p['brk'] = None
@@ -796,7 +838,8 @@ class Battle:
             return
         q = r['quiz']['questions'][r['cur']]
         online = [p for p in r['players'].values() if now - p['seen'] < 8]
-        if now - r['cur_start'] > q['time'] + 1 or (online and all(q['id'] in p['answers'] for p in online)):
+        extra = max([1.0] + [p['acc']['extra'] for p in online if q['id'] not in p['answers']])     # ждём тех, у кого больше времени
+        if now - r['cur_start'] > q['time'] * extra + 1 or (online and all(q['id'] in p['answers'] for p in online)):
             r['reveal'] = True
 
     def pause(self, r, on, now):
@@ -815,12 +858,12 @@ class Battle:
     def end(self, r, now):
         if r['phase'] == 'ended':
             return r['result_id']
-        r['phase'] = 'ended'
         r['ended'] = now
         data = self.report(r)
-        with self.db() as c:
+        with self.db() as c:     # ensure_ascii: одиночный суррогат из ответа ученика не уронит запись итогов
             r['result_id'] = c.execute('INSERT INTO results (title, cls, mode, started, ended, data) VALUES (?, ?, ?, ?, ?, ?)',
-                                       (r['quiz']['title'], r['cls'], r['mode'], r['started'] or r['opened'], now, json.dumps(data, ensure_ascii=False))).lastrowid
+                                       (r['quiz']['title'], r['cls'], r['mode'], r['started'] or r['opened'], now, json.dumps(data))).lastrowid
+        r['phase'] = 'ended'     # только после записи: при сбое игру можно завершить ещё раз
         return r['result_id']
 
     def accuracy(self, p):
@@ -882,14 +925,14 @@ class Battle:
             cells = []
             for q in qs:
                 a = p['answers'].get(q['id'])
-                cells.append(None if not a else ('u' if a['frac'] is None else round(a['frac'], 2)))
+                cells.append(None if not a or not a['tries'] else ('u' if a.get('frac') is None else round(a['frac'], 2)))
             rows.append({'key': p['key'], 'name': p['name'], 'short': short(p['name']), 'score': p['score'], 'acc': self.accuracy(p), 'cells': cells, 'done': p['done'],
                          'online': time.time() - p['seen'] < 8, 'team': p['team'], 'accs': p['acc'], 'mastery': self.mastery(r, p) if r['mode'] == 'peak' else None,
                          'reattempts': sum(1 for x in p['attempts'].values() if x > 1), 'avatar': p['avatar'], 'tier': self.tier(r, p) if r['mode'] == 'peak' else None,
                          'progress': len(p['answers']), 'brk': bool(p['brk'])})
         qstats = []
         for q in qs:
-            fr = [p['answers'][q['id']]['tries'][0]['frac'] for p in r['players'].values() if q['id'] in p['answers'] and p['answers'][q['id']]['tries'][0]['frac'] is not None]
+            fr = [a['tries'][0]['frac'] for p in r['players'].values() for a in [p['answers'].get(q['id'])] if a and a['tries'] and a['tries'][0]['frac'] is not None]
             qstats.append({'type': q['type'], 'text': (q['text'] or 'Вопрос с пропусками')[:90], 'acc': round(100 * sum(fr) / len(fr)) if fr else None, 'n': len(fr)})
         return rows, qstats
 
@@ -931,7 +974,7 @@ def install_battle(app, data_dir=None):
     route('status', status)
 
     def join(d, now):
-        r, p = game.join(d.get('className'), d.get('name'), now)
+        r, p = game.join(d.get('className'), d.get('name'), now, d.get('token'))
         return {'key': p['key'], 'token': p['token']}
     route('join', join)
 
@@ -952,7 +995,7 @@ def install_battle(app, data_dir=None):
         if r['phase'] == 'lobby':
             out['names'] = [short(x['name']) for x in r['players'].values()]
         qid = game.current(r, p)
-        if qid and not r['paused']:
+        if qid and not r['paused'] and d.get('ready'):     # часы вопроса идут с показа: пока ученик смотрит разбор прошлого ответа, клиент не готов
             out['q'] = game.question(r, p, qid, now)
         if p['brk']:
             out['brk'] = p['brk']
@@ -1070,7 +1113,7 @@ def install_battle(app, data_dir=None):
             p = next((x for x in data['players'] if x['name'] == name), None)
             need(p and qid in p['answers'], 'Ответ не найден.')
             p['answers'][qid]['teacher'] = ok
-            c.execute('UPDATE results SET data = ? WHERE id = ?', (json.dumps(data, ensure_ascii=False), rid))
+            c.execute('UPDATE results SET data = ? WHERE id = ?', (json.dumps(data), rid))
         return {}
     route('mark', mark, teacher=True)
 
@@ -1104,7 +1147,7 @@ def install_battle(app, data_dir=None):
             elif action == 'kick':
                 key = norm(d.get('key') or '')
                 r['players'].pop(key, None)
-                r['kicked'].add(key)
+                r['kicked'].add(anyorder(key))
             elif action == 'acc':
                 p = r['players'].get(norm(d.get('key') or ''))
                 need(p, 'Нет такого ученика.')
