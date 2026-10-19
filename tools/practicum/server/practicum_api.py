@@ -39,7 +39,7 @@ BADGES = [
 
 
 # Группы тем для «паутины» навыков: игры практикума по разделам информатики.
-AREAS = [('Программирование', ['code', 'quest', 'arrays', 'office']), ('Алгоритмы', ['shop', 'executors', 'race', 'factory', 'route']),
+AREAS = [('Программирование', ['code', 'quest', 'arrays', 'office']), ('Алгоритмы', ['shop', 'executors', 'race', 'factory', 'route', 'turing']),
          ('Логика', ['logic', 'gates', 'sets']), ('Кодирование', ['bits', 'merge', 'bytes', 'pixel']), ('Данные и сети', ['sheets', 'dbcity', 'files', 'net', 'ipnet', 'detective']),
          ('ОГЭ', ['oge']), ('Реакция', ['cells', 'snake'])]
 

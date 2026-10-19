@@ -4,11 +4,12 @@ import {browser, BASE} from './lib.mjs';
 const b = await browser(), URL = BASE + '/courses/game-8-lab/';
 const done = (ms = 15000) => b.ev(`await waitFor(()=>window.labDone,${ms});const d=window.labDone;window.labDone=null;return d`);
 const click = sel => b.ev(`document.querySelector('${sel}').click()`);
-await b.size(1440, 900); await b.send('Page.navigate', {url: URL}); await b.sleep(800); await b.ev('localStorage.clear()'); await b.send('Page.reload'); await b.ev("await waitFor(()=>document.querySelectorAll('.lab-card').length===20,20000);"); await b.sleep(900); await b.shot('lab-hub', 1440, 900, true);
-b.check('двадцать игр на странице, у каждой обложка', await b.ev("return [...document.querySelectorAll('.lab-card img')].filter(i=>i.complete&&i.naturalWidth>100).length===20"));
+const counts = {pcbuild: 8, layout: 10, autopilot: 8, ege: 18, arrays: 10, logic: 8, ipnet: 8, oge: 8, sheets: 12, bytes: 10, sets: 10, executors: 23, office: 12, gates: 14, factory: 15, detective: 9, dbcity: 14, pixel: 15, race: 12, quest: 8, turing: 8};
+const CARDS = Object.keys(counts).length, NOART = ['turing'];   // у новых игр пока нет обложек (art/cover_<id>.webp)
+await b.size(1440, 900); await b.send('Page.navigate', {url: URL}); await b.sleep(800); await b.ev('localStorage.clear()'); await b.send('Page.reload'); await b.ev(`await waitFor(()=>document.querySelectorAll('.lab-card').length===${CARDS},20000);`); await b.sleep(900); await b.shot('lab-hub', 1440, 900, true);
+b.check(`${CARDS} игр на странице, у каждой обложка (кроме новых без картинок: ${NOART.join(', ')})`, await b.ev(`return [...document.querySelectorAll('.lab-card img')].filter(i=>i.complete&&i.naturalWidth>100).length===${CARDS - NOART.length}`));
 await click('[data-game=factory]'); await b.ev("await waitFor(()=>document.querySelector('.lab-lgrid'))");
 b.check('уровни открываются по порядку: первый открыт, второй закрыт (на стенде открыты все для проверки)', await b.ev("return document.querySelectorAll('.lab-level').length===15&&/открыт/.test(document.querySelector('[data-level=\"1\"]').textContent)&&/закрыт/.test(document.querySelector('[data-level=\"2\"]').textContent)"));
-const counts = {pcbuild: 8, layout: 10, autopilot: 8, ege: 18, arrays: 10, logic: 8, ipnet: 8, oge: 8, sheets: 12, bytes: 10, sets: 10, executors: 23, office: 12, gates: 14, factory: 15, detective: 9, dbcity: 14, pixel: 15, race: 12, quest: 8};
 for (const [id, n] of Object.entries(counts)) { let ok = true, info = '';
   for (let lv = 1; lv <= n && ok; lv++) { await b.ev(`window.labDone=null;labGo('${id}',${lv})`); await b.sleep(120);
     if (id === 'detective') { const steps = await b.ev('return window.labNow.level.steps.length');
@@ -44,5 +45,5 @@ b.check('короткая программа ученика — на перво�
 await fetch(BASE + '/test/teacher/1'); await api('teacher', {className: '8 «Г»', action: 'stop'}); await fetch(BASE + '/test/teacher/0'); await b.ev("await waitFor(()=>window.labRace.phase==='done'&&window.labRace.board[1].program,8000)"); await b.sleep(300);
 b.check('после завершения решения всех участников показаны для разбора', await b.ev("return document.querySelectorAll('.ra-race .lab-table .lab-code').length===2&&document.querySelector('[data-act=race-send]').disabled"));
 await fetch(BASE + '/test/teacher/1'); await api('teacher', {className: '8 «Г»', action: 'clear'}); await fetch(BASE + '/test/teacher/0');
-await b.size(390, 800); await b.send('Page.navigate', {url: URL}); await b.ev("await waitFor(()=>document.querySelectorAll('.lab-card').length===20,20000)"); b.check('на телефоне нет горизонтальной прокрутки', await b.ev('return document.documentElement.scrollWidth<=innerWidth'));
+await b.size(390, 800); await b.send('Page.navigate', {url: URL}); await b.ev(`await waitFor(()=>document.querySelectorAll('.lab-card').length===${CARDS},20000)`); b.check('на телефоне нет горизонтальной прокрутки', await b.ev('return document.documentElement.scrollWidth<=innerWidth'));
 b.done();
