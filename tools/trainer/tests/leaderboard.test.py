@@ -3,6 +3,7 @@ import json,sqlite3,sys,tempfile
 from pathlib import Path
 from flask import Flask
 sys.path[:0]=[str(Path(__file__).resolve().parents[1]/'server'),'/srv/school4/test-results-app']
+sys.path.append(str(Path(__file__).resolve().parents[3]/'tools/stubs'))  # outside the school server: journal stub
 from trainer_api import install_trainer,norm
 with tempfile.TemporaryDirectory(prefix='school4-records-test-') as directory:
  root=Path(directory);app=Flask(__name__);install_trainer(app,root,root/'journal.db');client=app.test_client()

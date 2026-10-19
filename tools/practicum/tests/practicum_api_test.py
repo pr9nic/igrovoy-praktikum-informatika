@@ -3,6 +3,7 @@ import datetime, json, sqlite3, sys, tempfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT / 'tools/practicum/server'), '/srv/school4/test-results-app']
+sys.path.append(str(ROOT / 'tools/stubs'))   # вне школьного сервера — заглушка журнала
 import portal_security
 from flask import Flask
 from practicum_api import install_practicum

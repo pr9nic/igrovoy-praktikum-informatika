@@ -3,6 +3,7 @@ import sys, tempfile, random, json
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT / 'tools/battle/server'), '/srv/school4/test-results-app']
+sys.path.append(str(ROOT / 'tools/stubs'))   # вне школьного сервера — заглушка журнала
 import battle_api as B
 from flask import Flask
 teacher = [False]; B.is_teacher = lambda: teacher[0]
