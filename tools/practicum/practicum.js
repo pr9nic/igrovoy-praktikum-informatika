@@ -254,8 +254,18 @@
       const hw = el('div', 'p-tablewrap'); hw.append(hm); box.append(el('h3', 'p-th', 'Тепловая карта: доля звёзд по темам'), hw); }
     if (d.hard && d.hard.length) { const ul = el('ul', 'p-hard'); for (const h of d.hard) ul.append(el('li', '', `${h.title}, этап ${h.level} — застряли ${h.stuck} уч.`)); box.append(el('h3', 'p-th', 'Трудные этапы: здесь остановились несколько учеников'), ul); }
     box.append(el('h3', 'p-th', 'Ученики'));
-    const wrap = el('div', 'p-tablewrap'); wrap.append(t); box.append(wrap, el('p', 'p-note', 'Щёлкните по имени, чтобы открыть профиль ученика. Отметки в журнал ученик отправляет сам кнопкой на карточке игры.'));
+    const csv = button('⬇ Таблица для Excel (CSV)', 'p-small', () => download(`Практикум ${className} ${new Date().toLocaleDateString('ru-RU')}.csv`, classCsv(d))); csv.dataset.act = 'csv';
+    const wrap = el('div', 'p-tablewrap'); wrap.append(t); box.append(csv, wrap, el('p', 'p-note', 'Щёлкните по имени, чтобы открыть профиль ученика. Отметки в журнал ученик отправляет сам кнопкой на карточке игры.'));
   }
+  // Таблица класса для Excel: общие счётчики, звёзды и отметка по каждой игре, доля звёзд по темам. Разделитель «;» и BOM — так её открывает русский Excel.
+  function classCsv(d) {
+    const mark = (st, mx) => !st || !mx ? '' : st * 100 >= GRADING.five * mx ? 5 : st * 100 >= GRADING.four * mx ? 4 : st * 100 >= GRADING.three * mx ? 3 : 2;
+    const rows = [['Ученик', 'Ранг', 'Звёзд всего', 'Этапов пройдено', 'Звёзд за неделю', 'Серия дней', 'Значков', ...d.games.flatMap(g => [`${g.title}: звёзды из ${g.max}`, `${g.title}: отметка`]), ...(d.areas || []).map(a => `${a}, %`)]];
+    for (const s of d.students) rows.push([s.name, s.rank, s.stars, s.done, s.week, s.streak, s.badges, ...d.games.flatMap(g => [s.games[g.id] || 0, mark(s.games[g.id] || 0, g.max)]), ...(d.areas || []).map(a => s.skills && s.skills[a] != null ? Math.round(s.skills[a] * 100) : '')]);
+    const cell = v => '"' + (typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? "'" + v : String(v)).replace(/"/g, '""') + '"';   // имя «=…» Excel не примет за формулу
+    return '\ufeff' + rows.map(r => r.map(cell).join(';')).join('\r\n');
+  }
+  function download(name, text) { const a = el('a'); a.href = URL.createObjectURL(new Blob([text], {type: 'text/csv'})); a.download = name.replace(/[\\/:*?"<>|]/g, '_'); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
   function card(game) {
     const c = el('article', 'p-card'), art = el('div', 'p-art', game.art), body = el('div', 'p-body');
     art.style.background = game.color;
