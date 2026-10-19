@@ -7,6 +7,27 @@
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
   const button = (text, cls, fn) => { const b = el('button', cls, text); b.type = 'button'; b.addEventListener('click', fn); return b; };
   const norm = s => String(s).trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
+  // Доступность: текст только для экранного чтения, скрытие декоративных узлов, подпись кнопки.
+  const scroller = label => { const w = el('div', 'p-tablewrap'); w.tabIndex = 0; w.setAttribute('role', 'region'); w.setAttribute('aria-label', label); return w; };   // таблица с прокруткой: доступна с клавиатуры
+  const sr = text => el('span', 'p-sr', text), hide = n => { n.setAttribute('aria-hidden', 'true'); return n; }, named = (n, label) => { n.setAttribute('aria-label', label); return n; };
+  // Окно поверх страницы: фон недоступен (inert) — Tab не уходит под окно; Esc закрывает; фокус возвращается туда, где был.
+  function layer(top, dlg, label, shut) {
+    dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-label', label);
+    const back = document.activeElement, off = [...document.body.children].filter(n => n !== top && !n.inert && n.tagName !== 'SCRIPT');
+    off.forEach(n => { n.inert = true; });
+    top.addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); shut(); } });
+    let once = false; return () => { if (once) return; once = true; off.forEach(n => { n.inert = false; }); if (back && back.isConnected && back !== document.body) back.focus(); };
+  }
+  // Смена экрана не теряет фокус клавиатуры: та же кнопка (по data-атрибуту) в новой разметке или заголовок экрана.
+  let booted = false;
+  const focusSel = () => { const a = document.activeElement; if (!a || !root.contains(a)) return null; for (const k of ['play', 'act', 'daily', 'warmup', 'review', 'mark', 'profile', 'join']) if (a.dataset[k] != null) return `[data-${k}="${CSS.escape(a.dataset[k])}"]`; return null; };
+  function paint(...nodes) {
+    const a = document.activeElement, had = booted && (!a || a === document.body || root.contains(a)), sel = focusSel();
+    root.replaceChildren(...nodes); booted = true;
+    if (!had || document.querySelector('.p-player, .pf-modal')) return;
+    const t = (sel && root.querySelector(sel)) || root.querySelector('h1, h2'); if (!t) return;
+    if (!t.matches('button, a, input, select')) t.tabIndex = -1; t.focus({preventScroll: !sel});
+  }
   let store = {}; try { store = JSON.parse(localStorage.getItem(STORE) || '{}') || {}; } catch {}
   store.profiles = store.profiles || {};
   const save = () => { try { localStorage.setItem(STORE, JSON.stringify(store)); } catch {} };
@@ -51,7 +72,7 @@
   function login() {
     const box = el('section', 'p-login'), form = el('form');
     box.append(el('p', 'p-eyebrow', `${data.grade} класс · игровой практикум`), el('h1', '', 'Кто играет?'), el('p', 'p-lead', 'Выбери свой класс и себя: звёзды и отметки будут записываться на твоё имя.'));
-    const letter = el('select'); letter.setAttribute('aria-label', 'Буква класса');
+    const letter = el('select'); letter.id = 'p-who-class';
     const listed = classes ? Object.keys(classes.roster) : [];
     for (const l of LETTERS) { const name = `${data.grade} «${l}»`, o = el('option', '', name + (listed.includes(name) ? '' : '')); o.value = name; letter.append(o); }
     if (store.lastClass) letter.value = store.lastClass;
@@ -59,16 +80,18 @@
     function names() {
       const list = classes?.roster?.[letter.value] || [];
       slot.replaceChildren();
-      if (list.length) { const pick = el('select'); pick.dataset.field = 'name'; pick.setAttribute('aria-label', 'Фамилия и имя'); const none = el('option', '', '— выбери себя —'); none.value = ''; pick.append(none); for (const n of list) { const o = el('option', '', n); o.value = n; pick.append(o); } slot.append(pick); }
-      else { const input = el('input'); input.dataset.field = 'name'; input.placeholder = 'Фамилия Имя'; input.autocomplete = 'off'; input.maxLength = 80; input.setAttribute('aria-label', 'Фамилия и имя'); slot.append(input); }
+      if (list.length) { const pick = el('select'); pick.dataset.field = 'name'; pick.id = 'p-who-name'; const none = el('option', '', '— выбери себя —'); none.value = ''; pick.append(none); for (const n of list) { const o = el('option', '', n); o.value = n; pick.append(o); } slot.append(pick); }
+      else { const input = el('input'); input.dataset.field = 'name'; input.placeholder = 'Фамилия Имя'; input.autocomplete = 'off'; input.maxLength = 80; input.id = 'p-who-name'; input.setAttribute('aria-describedby', 'p-who-status'); slot.append(input); }
     }
     letter.addEventListener('change', names); names();
-    const status = el('p', 'p-status'); status.setAttribute('role', 'status');
-    form.append(el('label', '', 'Класс'), letter, el('label', '', 'Фамилия и имя'), slot, button('Войти →', 'p-primary', () => form.requestSubmit()), status);
+    const status = el('p', 'p-status'); status.setAttribute('role', 'status'); status.id = 'p-who-status';
+    const lab = (text, id) => { const l = el('label', '', text); l.htmlFor = id; return l; };
+    form.append(lab('Класс', 'p-who-class'), letter, lab('Фамилия и имя', 'p-who-name'), slot, button('Войти →', 'p-primary', () => form.requestSubmit()), status);
     form.addEventListener('submit', async e => {
       e.preventDefault();
-      const name = slot.querySelector('[data-field=name]').value.trim().replace(/\s+/g, ' ');
-      if (name.length < 5 || !name.includes(' ')) { status.textContent = 'Укажи фамилию и имя.'; return; }
+      const field = slot.querySelector('[data-field=name]'), name = field.value.trim().replace(/\s+/g, ' ');
+      field.removeAttribute('aria-invalid');
+      if (name.length < 5 || !name.includes(' ')) { status.textContent = 'Укажи фамилию и имя.'; field.setAttribute('aria-invalid', 'true'); field.focus(); return; }
       const key = norm(letter.value + '|' + name);
       player = store.profiles[key] = store.profiles[key] || {className: letter.value, name, levels: {}, sent: {}};
       store.lastClass = letter.value; store.last = key; save();
@@ -77,7 +100,7 @@
       remember(); notice = ''; await stats(); list();
     });
     if (!remote) box.append(el('p', 'p-note', 'Журнал сейчас недоступен: играть можно, но отметки не отправятся.'));
-    box.append(form); root.replaceChildren(box);
+    box.append(form); paint(box);
   }
 
   // Учитель (учительский ноутбук) видит на экране входа панель со всеми своими разделами. Адрес #teacher открывает её сразу.
@@ -89,7 +112,7 @@
   async function teacherProbe() {
     if (!(await isTeacher()) || player) return; const box = root.querySelector('.p-login'); if (!box) return;
     const g = data.grade, panel = el('section', 'p-tpanel'), grid = el('div', 'p-tlinks');
-    const link = (icon, title, note, href, act) => { const a = el('a', 'p-tlink'); a.href = href; a.target = '_blank'; a.rel = 'noopener'; a.append(el('b', '', icon + ' ' + title), el('span', '', note)); if (act) a.dataset.act = act; grid.append(a); };
+    const link = (icon, title, note, href, act) => { const a = el('a', 'p-tlink'); a.href = href; a.target = '_blank'; a.rel = 'noopener'; a.append(el('b', '', icon + ' ' + title), el('span', '', note), sr(' (откроется в новой вкладке)')); if (act) a.dataset.act = act; grid.append(a); };
     { const hb = button('', 'p-tlink p-tbtn', () => healthView()); hb.append(el('b', '', '🩺 Состояние сервиса'), el('span', '', 'Какие части школьного сервера работают и нужен ли перезапуск')); hb.dataset.act = 'health'; grid.append(hb); }
     { const bt = button('', 'p-tlink p-tbtn', () => battleTeacher()); bt.append(el('b', '', '⚔ Битва класса'), el('span', '', 'Викторины всем классом: 17 типов вопросов, 5 режимов, «Восхождение», проектор, отчёты')); bt.dataset.act = 'battle-teacher'; grid.append(bt); }
     link('🚀', '«Сбой на станции» — пульт', 'Запуск раунда, роли, камеры, отметки, экран для проектора', `/courses/game-${g}-crew/#pult`, 'crew-pult');
@@ -99,7 +122,7 @@
     link('👾', 'Битва с Глюком', 'Прогресс по боссам и отметки', `/courses/trainer-${g}-glitch/?all=1`);
     const stats = button('', 'p-tlink p-tbtn', () => teacherView(`${g} «А»`)); stats.append(el('b', '', '📊 Статистика практикума'), el('span', '', 'Звёзды, ранги, серии и значки учеников по классам')); stats.dataset.act = 'teacher'; grid.prepend(stats);
     panel.append(el('p', 'p-eyebrow', `УЧИТЕЛЮ · ${g} КЛАСС`), el('p', 'p-note', 'Эта панель видна только на учительском ноутбуке. Разделы открываются в новой вкладке; класс и букву можно сменить внутри раздела.'), grid);
-    const other = el('nav', 'p-grades'); other.append(el('span', '', 'Панель другой параллели:')); for (let n = 6; n <= 11; n++) { const a = el('a', n === g ? 'now' : '', String(n)); a.href = `/courses/game-${n}-practicum/#teacher`; other.append(a); } panel.append(other);
+    const other = el('nav', 'p-grades'); other.setAttribute('aria-label', 'Панель другой параллели'); other.append(el('span', '', 'Панель другой параллели:')); for (let n = 6; n <= 11; n++) { const a = el('a', n === g ? 'now' : '', String(n)); if (n === g) a.setAttribute('aria-current', 'page'); a.href = `/courses/game-${n}-practicum/#teacher`; other.append(a); } panel.append(other);
     box.after(panel); if (location.hash === '#teacher') panel.scrollIntoView({block: 'start'});
   }
   /* ---------- профиль ученика: инфографика ---------- */
@@ -110,28 +133,28 @@
     const top = el('div', 'pf-top'); top.append(button('← ' + (who === 'teacher' ? 'К таблице класса' : 'К играм'), 'p-small', back), el('p', 'p-eyebrow', who === 'teacher' ? 'УЧИТЕЛЮ · ПРОФИЛЬ УЧЕНИКА' : 'МОЙ ПРОФИЛЬ'), el('span', 'pf-sp'));
     if (who === 'me' && d.avatar) { const ab = button('🤖 Сменить аватар', 'p-small', () => avatarPicker(d)); ab.dataset.act = 'avatar'; top.append(ab); }
     const pr = button('🖨 Отчёт для родителей', 'p-small', () => print()); pr.dataset.act = 'print'; top.append(pr);
-    page.append(el('p', 'pf-printhead', `Игровой практикум по информатике · ${d.className} · ${new Date().toLocaleDateString('ru-RU')}`));
+    page.append(el('h1', 'p-sr', (who === 'teacher' ? 'Профиль ученика: ' : 'Мой профиль: ') + d.name), el('p', 'pf-printhead', `Игровой практикум по информатике · ${d.className} · ${new Date().toLocaleDateString('ru-RU')}`));
     const grid = el('div', 'pf-grid');
     // Карточка игрока: аватар с кольцом прогресса ранга
-    const card = el('div', 'pf-card pf-player'), ring = sv('svg', {viewBox: '0 0 300 300', class: 'pf-ring'}), C = 2 * Math.PI * 128;
+    const card = el('div', 'pf-card pf-player'), ring = sv('svg', {viewBox: '0 0 300 300', class: 'pf-ring', 'aria-hidden': 'true'}), C = 2 * Math.PI * 128;
     const defs = sv('defs'), lg = sv('linearGradient', {id: 'pfg', x1: 0, y1: 0, x2: 1, y2: 1}); lg.append(sv('stop', {offset: 0, 'stop-color': '#ffd34d'}), sv('stop', {offset: 1, 'stop-color': '#ff6f91'})); defs.append(lg);
     const arc = sv('circle', {cx: 150, cy: 150, r: 128, fill: 'none', stroke: 'url(#pfg)', 'stroke-width': 18, 'stroke-linecap': 'round', 'stroke-dasharray': C, 'stroke-dashoffset': C, transform: 'rotate(-90 150 150)', class: 'pf-arc'});
     ring.append(defs, sv('circle', {cx: 150, cy: 150, r: 128, fill: 'none', stroke: 'rgba(255,255,255,.08)', 'stroke-width': 18}), arc);
-    const ava = el('div', 'pf-ava', initials), wrap = el('div', 'pf-avawrap'); wrap.append(ring, ava);
+    const ava = el('div', 'pf-ava', initials), wrap = el('div', 'pf-avawrap'); hide(wrap).append(ring, ava);
     if (d.avatar) { const im = new Image(); im.alt = ''; im.src = `art/avatar_${d.avatar.idx}.webp?v=${P.artVersion || ''}`; im.addEventListener('load', () => { ava.textContent = ''; ava.append(im); ava.classList.add('pic'); }); }
-    const bar = el('div', 'pf-bar'), fill = el('i'); bar.append(fill);
+    const bar = hide(el('div', 'pf-bar')), fill = el('i'); bar.append(fill);
     card.append(wrap, el('h2', 'pf-name', d.name), el('p', 'pf-cls', `${d.className} · Игровой практикум`), el('p', 'pf-rank', '⚙ ' + st.rank), el('p', 'pf-next', st.rankNext ? `до ранга «${st.rankNext}» — ещё ★ ${st.rankNeed}` : 'Высший ранг!'), bar);
     // Счётчики
     const tiles = el('div', 'pf-tiles'); const counters = [];
-    for (const [ic, n, l] of [['★', st.stars, 'звёзд'], ['▲', st.done, 'этапов пройдено'], ['✦', st.three, 'на три звезды'], ['◆', st.games, 'игр со звёздами']]) { const tl = el('div', 'pf-card pf-tile'), num = el('b', 'pf-num', '0'); tl.append(el('span', 'pf-ic', ic), num, el('small', '', l)); tiles.append(tl); counters.push([num, n]); }
+    for (const [ic, n, l] of [['★', st.stars, 'звёзд'], ['▲', st.done, 'этапов пройдено'], ['✦', st.three, 'на три звезды'], ['◆', st.games, 'игр со звёздами']]) { const tl = el('div', 'pf-card pf-tile'), num = el('b', 'pf-num', '0'); tl.append(hide(el('span', 'pf-ic', ic)), hide(num), hide(el('small', '', l)), sr(`${n} ${l}`)); tiles.append(tl); counters.push([num, n]); }
     // Неделя: задание дня и звёзды по дням
     const wk = el('div', 'pf-card pf-week'), days = el('div', 'pf-days'), mx = Math.max(1, ...d.week.map(x => x.stars));
     wk.append(el('p', 'pf-h', `ЗАДАНИЕ ДНЯ · СЕРИЯ ${d.daily ? d.daily.streak : 0}`), days);
-    for (const x of d.week) { const c = el('div', 'pf-day' + (x.daily ? ' on' : '')), col = el('i'); col.style.setProperty('--h', Math.round(x.stars / mx * 100) + '%'); c.title = `${x.date}: ★ ${x.stars}${x.daily ? ', задание дня выполнено' : ''}`; c.append(el('span', 'pf-flame', x.daily ? '🔥' : ''), col, el('small', '', x.day), el('em', '', x.stars ? '★' + x.stars : '')); days.append(c); }
+    for (const x of d.week) { const c = el('div', 'pf-day' + (x.daily ? ' on' : '')), col = el('i'); col.style.setProperty('--h', Math.round(x.stars / mx * 100) + '%'); c.title = `${x.date}: ★ ${x.stars}${x.daily ? ', задание дня выполнено' : ''}`; c.append(hide(el('span', 'pf-flame', x.daily ? '🔥' : '')), col, hide(el('small', '', x.day)), hide(el('em', '', x.stars ? '★' + x.stars : '')), sr(`${x.day}: звёзд ${x.stars}${x.daily ? ', задание дня выполнено' : ''}`)); days.append(c); }
     // Паутина навыков
     const sk = el('div', 'pf-card pf-skills'), N = d.skills.length, R0 = 150, pt = (i, r) => [Math.cos(-Math.PI / 2 + i * 2 * Math.PI / N) * r, Math.sin(-Math.PI / 2 + i * 2 * Math.PI / N) * r];
     sk.append(el('p', 'pf-h', 'НАВЫКИ ПО ТЕМАМ'));
-    if (N >= 3) { const radar = sv('svg', {viewBox: '-330 -215 660 430', class: 'pf-radar'});
+    if (N >= 3) { const radar = sv('svg', {viewBox: '-330 -215 660 430', class: 'pf-radar', role: 'img', 'aria-label': 'Навыки: ' + d.skills.map(x => `${x.area} ${Math.round(x.pct * 100)}%`).join(', ')});
       for (const f of [.25, .5, .75, 1]) radar.append(sv('polygon', {points: d.skills.map((_, i) => pt(i, R0 * f).join(',')).join(' '), fill: 'none', stroke: 'rgba(255,255,255,.12)', 'stroke-width': 2}));
       d.skills.forEach((_, i) => radar.append(sv('line', {x1: 0, y1: 0, x2: pt(i, R0)[0], y2: pt(i, R0)[1], stroke: 'rgba(255,255,255,.1)', 'stroke-width': 2})));
       const poly = sv('polygon', {points: d.skills.map((x, i) => pt(i, R0 * Math.max(.04, x.pct)).join(',')).join(' '), fill: 'rgba(58,210,159,.35)', stroke: '#3ad29f', 'stroke-width': 4, 'stroke-linejoin': 'round', class: 'pf-poly'}); radar.append(poly);
@@ -144,14 +167,14 @@
     lgc.append(top3.length ? podium : el('p', 'p-note', 'На этой неделе звёзд ещё никто не получал.'), el('p', 'pf-place', d.league.place ? `${who === 'teacher' ? 'Место' : 'Твоё место'}: ${d.league.place} из ${d.league.size} · ★ ${d.league.stars} за неделю` : 'Пройди этап, чтобы попасть в лигу этой недели.'));
     // Значки
     const bd = el('div', 'pf-card pf-badges'), got = d.badges.filter(b => b.got).length; bd.append(el('p', 'pf-h', `ЗНАЧКИ · ${got} ИЗ ${d.badges.length}`)); const row = el('div', 'pf-brow');
-    for (const b of d.badges) { const im = new Image(); im.alt = b.title; im.title = `${b.title}: ${b.how}`; im.src = `art/badge_${b.id}.webp?v=${P.artVersion || ''}`; im.className = b.got ? 'got' : ''; const f = el('figure'); f.append(im, el('figcaption', '', b.title)); row.append(f); } bd.append(row);
+    for (const b of d.badges) { const im = new Image(); im.alt = ''; im.title = `${b.title}: ${b.how}`; im.src = `art/badge_${b.id}.webp?v=${P.artVersion || ''}`; im.className = b.got ? 'got' : ''; const f = el('figure'); f.append(im, el('figcaption', '', b.title), sr(b.got ? ' — получен' : ` — ещё не получен. ${b.how}`)); row.append(f); } bd.append(row);
     // Готовность к отметке
     const gm = el('div', 'pf-card pf-games'); gm.append(el('p', 'pf-h', 'ГОТОВНОСТЬ К ОТМЕТКЕ ПО ИГРАМ'));
     if (!d.games.length) gm.append(el('p', 'p-note', 'Пока нет звёзд ни в одной игре.'));
-    for (const g of d.games) { const r = el('div', 'pf-grow'), b2 = el('div', 'pf-gbar'), f2 = el('i'); f2.style.setProperty('--w', Math.round(g.pct * 100) + '%'); b2.append(f2, el('span', 'm3'), el('span', 'm4'), el('span', 'm5'));
+    for (const g of d.games) { const r = el('div', 'pf-grow'), b2 = hide(el('div', 'pf-gbar')), f2 = el('i'); f2.style.setProperty('--w', Math.round(g.pct * 100) + '%'); b2.append(f2, el('span', 'm3'), el('span', 'm4'), el('span', 'm5'));
       r.append(el('span', 'pf-gname', g.title), b2, el('b', 'pf-gmark k' + g.mark, `${Math.round(g.pct * 100)}% · «${g.mark}»`)); gm.append(r); }
     gm.append(el('p', 'p-note', 'Отметки на полосе: 33 % — «3», 60 % — «4», 80 % — «5». Отметку в журнал ученик отправляет сам кнопкой на карточке игры.'));
-    grid.append(card, tiles, wk, sk, lgc, bd, gm); page.append(top, grid); root.replaceChildren(page); scrollTo(0, 0);
+    grid.append(card, tiles, wk, sk, lgc, bd, gm); page.append(top, grid); paint(page); scrollTo(0, 0);
     // Анимация: кольцо, полоса ранга, счётчики (уважаем «уменьшить движение»)
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
     requestAnimationFrame(() => { page.classList.add('go'); arc.style.strokeDashoffset = C * (1 - st.rankProgress); fill.style.width = Math.round(st.rankProgress * 100) + '%'; });
@@ -160,11 +183,14 @@
   // Выбор аватара: открытые — за звёзды, сохраняет сервер.
   function avatarPicker(d) {
     const back = el('div', 'pf-modal'), box = el('div', 'pf-pick'), grid = el('div', 'pf-avgrid'), st = d.stats.stars;
-    box.append(el('h2', '', 'Выбери аватар'), el('p', 'p-note', `Новые аватары открываются за звёзды. У тебя ★ ${st}.`), grid, button('Закрыть', 'p-small', () => back.remove()));
+    let release = () => {}; const shut = () => { back.remove(); release(); };
+    box.append(el('h2', '', 'Выбери аватар'), el('p', 'p-note', `Новые аватары открываются за звёзды. У тебя ★ ${st}.`), grid, button('Закрыть', 'p-small', shut));
     d.avatar.need.forEach((need, i) => { const open_ = st >= need, b = button('', 'pf-av' + (i === d.avatar.idx ? ' on' : '') + (open_ ? '' : ' locked'), async () => {
-        if (!open_) return; try { const r = await fetch('/results/api/practicum/avatar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...who(), idx: i})}); const j = await r.json(); if (!r.ok || j.status !== 'ok') throw new Error(j.message); d.avatar.idx = i; if (stat()) stat().avatar.idx = i; back.remove(); profileView(d, list, 'me'); } catch (e) { alert('Не получилось: ' + e.message); } });
-      const im = new Image(); im.alt = ''; im.src = `art/avatar_${i}.webp?v=${P.artVersion || ''}`; b.append(im, el('small', '', open_ ? (i === d.avatar.idx ? 'выбран' : 'открыт') : `🔒 ★ ${need}`)); b.dataset.avatar = i; grid.append(b); });
-    back.append(box); back.addEventListener('click', e => { if (e.target === back) back.remove(); }); document.body.append(back);
+        if (!open_) return; try { const r = await fetch('/results/api/practicum/avatar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...who(), idx: i})}); const j = await r.json(); if (!r.ok || j.status !== 'ok') throw new Error(j.message); d.avatar.idx = i; if (stat()) stat().avatar.idx = i; shut(); profileView(d, list, 'me'); root.querySelector('[data-act=avatar]')?.focus(); } catch (e) { alert('Не получилось: ' + e.message); } });
+      const im = new Image(); im.alt = ''; im.src = `art/avatar_${i}.webp?v=${P.artVersion || ''}`; b.append(im, el('small', '', open_ ? (i === d.avatar.idx ? 'выбран' : 'открыт') : `🔒 ★ ${need}`)); b.dataset.avatar = i;
+      named(b, `Аватар ${i + 1}: ` + (open_ ? (i === d.avatar.idx ? 'выбран' : 'открыт') : `закрыт, нужно ★ ${need}`)); b.setAttribute('aria-pressed', String(i === d.avatar.idx)); if (!open_) b.setAttribute('aria-disabled', 'true'); grid.append(b); });
+    back.append(box); back.addEventListener('click', e => { if (e.target === back) shut(); }); document.body.append(back);
+    release = layer(back, box, 'Выбор аватара', shut); (grid.querySelector('.pf-av.on') || box.querySelector('button')).focus();
   }
   /* ---------- битва класса: свой аналог Wayground (battle.js, battle_play.js, battle_teach.js) ---------- */
   let battleTimer = 0, battleRoom = '', battleSoon = 0;
@@ -177,10 +203,10 @@
     if (!d.open || !player || document.querySelector('.bt2')) return;
     battleRoom = String(d.room);
     if (btSkip() === battleRoom) {   // ученик сам вышел из этой игры — только напоминание на списке игр
-      if (root.querySelector('.p-grid') && !document.querySelector('.p-battle-banner')) { const ban = el('div', 'p-battle-banner'), b = button('Вернуться в игру ⚔', 'p-primary', () => battleView()); b.dataset.act = 'battle'; ban.append(el('strong', '', '⚔ Идёт игра класса'), el('span', '', `«${d.title}» · участников: ${d.players}`), b); (root.querySelector('.p-head') || root.firstChild).after(ban); }
+      if (root.querySelector('.p-grid') && !document.querySelector('.p-battle-banner')) { const ban = el('div', 'p-battle-banner'), b = button('Вернуться в игру ⚔', 'p-primary', () => battleView()); b.dataset.act = 'battle'; ban.setAttribute('role', 'status'); ban.append(el('strong', '', '⚔ Идёт игра класса'), el('span', '', `«${d.title}» · участников: ${d.players}`), b); (root.querySelector('.p-head') || root.firstChild).after(ban); }
       return; }
     if (frame) {   // ученик в другой игре: предупреждаем и через 5 секунд переводим в лобби
-      const ov = el('div', 'p-bt-call'), t = el('b', '', '5'); let n = 5; ov.append(el('strong', '', '⚔ Учитель начинает игру класса!'), el('span', '', `«${d.title}» — переходим в лобби через`), t, button('Сейчас', 'p-primary', () => { n = 0; }));
+      const ov = el('div', 'p-bt-call'), t = el('b', '', '5'); let n = 5; ov.setAttribute('role', 'alert'); ov.append(el('strong', '', '⚔ Учитель начинает игру класса!'), el('span', '', `«${d.title}» — переходим в лобби через`), t, button('Сейчас', 'p-primary', () => { n = 0; }));
       document.body.append(ov); battleSoon = setInterval(() => { n--; t.textContent = String(Math.max(0, n)); if (n <= 0) { clearInterval(battleSoon); battleSoon = 0; ov.remove(); close(false); battleView(); } }, 1000); return; }
     battleView();
   }
@@ -193,9 +219,9 @@
   function kpStop() { clearInterval(kpTimer); if (kpMe && !kpMe.started) KAPI('leave', {table: kpMe.table, token: kpMe.token}).catch(() => {}); kpMe = null; }
   function kpView() {
     clearInterval(battleTimer); kpStop();
-    const page = el('section', 'kp-page'), top = el('div', 'bt-top'), body = el('div', 'kp-body'), msg = el('p', 'p-note', '');
+    const page = el('section', 'kp-page'), top = el('div', 'bt-top'), body = el('div', 'kp-body'), msg = el('p', 'p-note', ''); msg.setAttribute('role', 'status');
     const back = button('← К играм', 'p-small', () => { kpStop(); list(); }); back.dataset.act = 'kp-back';
-    top.append(back, el('strong', '', `🎲 Кодополия с одноклассниками · ${player.className}`)); page.append(top, msg, body); root.replaceChildren(page);
+    top.append(back, el('h1', 'kp-h', `🎲 Кодополия с одноклассниками · ${player.className}`)); page.append(top, msg, body); paint(page);
     const board = P.games.find(g => g.id === 'board');
     const go = d => { clearInterval(kpTimer); try { sessionStorage.setItem('school4-kp', JSON.stringify({table: d.table, token: d.token, seat: d.seat, players: d.players, title: d.title, at: Date.now()})); } catch {} kpMe = null; list(); open({...board, params: board.params + '&net=1'}, 1); };
     const lobby = d => { kpMe = d; if (d.started) return go(d);
@@ -205,13 +231,13 @@
       if (d.seat === 0 && d.players.length >= 2) { const st = button('▶ Начать сейчас (свободные места займут боты)', 'p-primary', async () => { try { lobby(await KAPI('start', {table: d.table, token: d.token})); } catch (e) { msg.textContent = e.message; } }); st.dataset.act = 'kp-start'; row.append(st); }
       const lv = button('Выйти из лобби', 'p-small', () => { kpStop(); kpView(); }); lv.dataset.act = 'kp-leave'; row.append(lv); box.append(row); body.replaceChildren(box); };
     const browse = async () => { let d; try { d = await KAPI('list', {className: player.className}); msg.textContent = ''; } catch (e) { msg.textContent = 'Нет связи с сервером: ' + e.message; return; }
-      const form = el('form', 'kp-new'), inp = el('input'); inp.maxLength = 40; inp.placeholder = 'Название лобби, например «Команда 17»'; inp.dataset.field = 'kp-title';
+      const form = el('form', 'kp-new'), inp = el('input'); inp.maxLength = 40; inp.placeholder = 'Название лобби, например «Команда 17»'; inp.dataset.field = 'kp-title'; named(inp, 'Название нового лобби');
       const mk = button('＋ Создать лобби', 'p-primary'); mk.type = 'submit'; mk.dataset.act = 'kp-create'; form.append(inp, mk);
       form.addEventListener('submit', async e => { e.preventDefault(); try { lobby(await KAPI('create', {className: player.className, name: player.name, title: inp.value})); } catch (er) { msg.textContent = er.message; } });
       const ul = el('div', 'kp-list');
       for (const t of d.tables) { const card = el('div', 'kp-card' + (t.started ? ' busy' : '')); card.append(el('b', '', t.title), el('span', '', `${t.players.length}/4 · ${t.players.join(', ')}`));
         if (t.started) card.append(el('em', '', 'идёт партия'));
-        else { const j = button(t.players.length >= 4 ? 'заполнено' : 'Войти', 'p-small', async () => { try { lobby(await KAPI('join', {className: player.className, name: player.name, table: t.id})); } catch (er) { msg.textContent = er.message; } }); j.disabled = t.players.length >= 4; j.dataset.join = t.id; card.append(j); }
+        else { const j = button(t.players.length >= 4 ? 'заполнено' : 'Войти', 'p-small', async () => { try { lobby(await KAPI('join', {className: player.className, name: player.name, table: t.id})); } catch (er) { msg.textContent = er.message; } }); j.disabled = t.players.length >= 4; j.dataset.join = t.id; if (!j.disabled) named(j, `Войти в лобби «${t.title}»`); card.append(j); }
         ul.append(card); }
       const keep = body.querySelector('[data-field=kp-title]'); if (keep && document.activeElement === keep) { inp.value = keep.value; }
       body.replaceChildren(el('h2', '', 'Выбери лобби или создай своё'), el('p', 'p-note', 'Договорись с друзьями: один создаёт лобби, остальные входят в него из списка. Вчетвером партия стартует сама.'), form, d.tables.length ? ul : el('p', 'p-note', 'Лобби пока нет — создай первое!'));
@@ -220,13 +246,13 @@
     browse(); kpTimer = setInterval(tickKp, 1500);
   }
   async function studentProfile(className, name) {
-    root.replaceChildren(el('p', 'p-note', 'Загружаем профиль…'));
+    root.replaceChildren(el('p', 'p-note', 'Загружаем профиль…')); root.firstChild.setAttribute('role', 'status');
     try { const r = await fetch('/results/api/practicum/student?' + new URLSearchParams({slug: P.apiSlug, className, name}), {cache: 'no-store'}); const d = await r.json(); if (!r.ok || d.status !== 'ok') throw new Error(d.message || 'сервер не ответил'); profileView(d, () => teacherView(className), 'teacher'); }
-    catch (e) { root.replaceChildren(el('p', 'p-note', 'Не удалось открыть профиль: ' + e.message), button('← К таблице класса', 'p-small', () => teacherView(className))); }
+    catch (e) { paint(el('p', 'p-note', 'Не удалось открыть профиль: ' + e.message), button('← К таблице класса', 'p-small', () => teacherView(className))); }
   }
   // Состояние сервиса: какие части школьного сервера отвечают (для учителя).
   async function healthView() {
-    const box = el('section', 'p-teacher'), list2 = el('ul', 'p-health'); box.append(el('p', 'p-eyebrow', 'УЧИТЕЛЮ · СОСТОЯНИЕ СЕРВИСА'), el('h1', '', 'Проверка школьного сервера'), list2, button('← Ко входу', 'p-small', () => { login(); teacherProbe(); })); root.replaceChildren(box);
+    const box = el('section', 'p-teacher'), list2 = el('ul', 'p-health'); list2.setAttribute('aria-live', 'polite'); box.append(el('p', 'p-eyebrow', 'УЧИТЕЛЮ · СОСТОЯНИЕ СЕРВИСА'), el('h1', '', 'Проверка школьного сервера'), list2, button('← Ко входу', 'p-small', () => { login(); teacherProbe(); })); paint(box);
     const probe = async (title, url, body, ok) => { const li = el('li', 'wait', `⏳ ${title}`); list2.append(li); const t0 = performance.now();
       try { const r = await fetch(url, body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), cache: 'no-store'} : {cache: 'no-store'}); const j = await r.json().catch(() => null), good = ok(r.status, j); li.className = good ? 'ok' : 'bad'; li.textContent = `${good ? '✅' : '❌'} ${title} — ${good ? 'работает' : !j ? 'нет на сервере: нужен перезапуск журнала (sudo systemctl restart school4-test-results)' : 'ответ ' + r.status} · ${Math.round(performance.now() - t0)} мс`; }
       catch (e) { li.className = 'bad'; li.textContent = `❌ ${title} — сервер не отвечает (${e.message})`; } };
@@ -242,33 +268,33 @@
     list2.append(el('li', 'note', 'Если что-то красное с пометкой «нужен перезапуск» — выполните в терминале учительского ноутбука: sudo systemctl restart school4-test-results'));
   }
   async function teacherView(className) {
-    const box = el('section', 'p-teacher'), pick = el('select'); for (const l of LETTERS) { const o = el('option', '', `${data.grade} «${l}»`); o.value = o.textContent; pick.append(o); } pick.value = className; pick.addEventListener('change', () => teacherView(pick.value));
-    box.append(el('p', 'p-eyebrow', 'УЧИТЕЛЮ · СТАТИСТИКА ПРАКТИКУМА'), el('h1', '', 'Класс'), pick, button('← Ко входу', 'p-small', login)); root.replaceChildren(box);
+    const box = el('section', 'p-teacher'), pick = el('select'); for (const l of LETTERS) { const o = el('option', '', `${data.grade} «${l}»`); o.value = o.textContent; pick.append(o); } pick.value = className; pick.dataset.act = 'teacher-class'; named(pick, 'Класс'); pick.addEventListener('change', () => teacherView(pick.value));
+    box.append(el('p', 'p-eyebrow', 'УЧИТЕЛЮ · СТАТИСТИКА ПРАКТИКУМА'), el('h1', '', 'Класс'), pick, button('← Ко входу', 'p-small', login)); paint(box);
     let d; try { const r = await fetch('/results/api/practicum/teacher?' + new URLSearchParams({slug: P.apiSlug, className}), {cache: 'no-store'}); d = await r.json(); if (!r.ok || d.status !== 'ok') throw new Error(d.message || 'сервер не ответил'); } catch (e) { box.append(el('p', 'p-note', 'Не удалось получить статистику: ' + e.message)); return; }
     if (!d.students.length) { box.append(el('p', 'p-note', 'В этом классе ещё никто не играл.')); return; }
-    const t = el('table', 'p-table'), h = el('tr'); for (const x of ['Ученик', 'Ранг', '★ всего', 'Этапов', '★ за неделю', 'Серия', 'Значков', 'На «5»']) h.append(el('th', '', x)); t.append(h);
+    const t = el('table', 'p-table'), h = el('tr'); for (const x of ['Ученик', 'Ранг', '★ всего', 'Этапов', '★ за неделю', 'Серия', 'Значков', 'На «5»']) { const th = el('th', '', x); th.scope = 'col'; h.append(th); } t.append(h);
     for (const s of d.students) { const tr = el('tr'), nm = el('td'), a = button(s.name, 'pf-link', () => studentProfile(className, s.name)); a.dataset.profile = s.name; nm.append(a); tr.append(nm); for (const x of [s.rank, s.stars, s.done, s.week, s.streak, s.badges, s.fives.join(', ') || '—']) tr.append(el('td', '', String(x))); t.append(tr); }
-    // Тепловая карта класса: ученик × тема, цвет — доля звёзд; и этапы, на которых застревает больше всего учеников.
-    if (d.areas && d.areas.length) { const hm = el('table', 'p-heat'), hh = el('tr'); hh.append(el('th', '', 'Ученик')); for (const a of d.areas) hh.append(el('th', '', a)); hm.append(hh);
-      for (const s2 of d.students) { const tr = el('tr'); tr.append(el('td', '', s2.name)); for (const a of d.areas) { const v = (s2.skills || {})[a], td = el('td', 'hc', v == null ? '—' : Math.round(v * 100) + '%'); if (v != null) td.style.background = `hsl(${Math.round(v * 120)} 65% ${22 + v * 14}%)`; tr.append(td); } hm.append(tr); }
-      const hw = el('div', 'p-tablewrap'); hw.append(hm); box.append(el('h3', 'p-th', 'Тепловая карта: доля звёзд по темам'), hw); }
+    // Тепловая карта класса: ученик × тема, цвет — доля звёзд (тёмные тона: белый текст с контрастом не ниже 6:1); и этапы, на которых застревает больше всего учеников.
+    if (d.areas && d.areas.length) { const hm = el('table', 'p-heat'), hh = el('tr'); for (const a of ['Ученик', ...d.areas]) { const th = el('th', '', a); th.scope = 'col'; hh.append(th); } hm.append(hh);
+      for (const s2 of d.students) { const tr = el('tr'); tr.append(el('td', '', s2.name)); for (const a of d.areas) { const v = (s2.skills || {})[a], td = el('td', 'hc', v == null ? '—' : Math.round(v * 100) + '%'); if (v != null) td.style.background = `hsl(${Math.round(v * 120)} 65% ${20 + v * 6}%)`; tr.append(td); } hm.append(tr); }
+      const hw = scroller('Тепловая карта класса'); hw.append(hm); box.append(el('h3', 'p-th', 'Тепловая карта: доля звёзд по темам'), hw); }
     if (d.hard && d.hard.length) { const ul = el('ul', 'p-hard'); for (const h of d.hard) ul.append(el('li', '', `${h.title}, этап ${h.level} — застряли ${h.stuck} уч.`)); box.append(el('h3', 'p-th', 'Трудные этапы: здесь остановились несколько учеников'), ul); }
     box.append(el('h3', 'p-th', 'Ученики'));
-    const wrap = el('div', 'p-tablewrap'); wrap.append(t); box.append(wrap, el('p', 'p-note', 'Щёлкните по имени, чтобы открыть профиль ученика. Отметки в журнал ученик отправляет сам кнопкой на карточке игры.'));
+    const wrap = scroller('Таблица учеников'); wrap.append(t); box.append(wrap, el('p', 'p-note', 'Щёлкните по имени, чтобы открыть профиль ученика. Отметки в журнал ученик отправляет сам кнопкой на карточке игры.'));
   }
   function card(game) {
-    const c = el('article', 'p-card'), art = el('div', 'p-art', game.art), body = el('div', 'p-body');
+    const c = el('article', 'p-card'), art = hide(el('div', 'p-art', game.art)), body = el('div', 'p-body');
     art.style.background = game.color;
     // Обложка игры (нарисована нейросетью); если её нет, остаётся цветная плашка со значком.
     { const img = new Image(); img.onload = () => { art.textContent = ''; art.style.background = `url(${img.src}) center / cover no-repeat`; art.classList.add('pic'); c.classList.add('pic'); }; img.src = `art/cover_${game.id}.webp?v=${P.artVersion || ''}`; }
     const got = stars(game), max = game.levels * 3, mark = markOf(game), sent = player.sent[game.id];
     body.append(el('p', 'p-genre', game.genre), el('h3', '', game.title), el('p', 'p-about', game.about));
-    const bar = el('div', 'p-bar'), fill = el('i'); fill.style.width = got / max * 100 + '%'; bar.append(fill);
+    const bar = hide(el('div', 'p-bar')), fill = el('i'); fill.style.width = got / max * 100 + '%'; bar.append(fill);
     body.append(el('p', 'p-progress', `★ ${got} из ${max} · пройдено ${done(game)} из ${game.levels} · около ${game.minutes} минут`), bar);
-    const actions = el('div', 'p-actions'), play = button(got ? 'Продолжить ▶' : 'Играть ▶', 'p-primary', () => open(game)); play.dataset.play = game.id; actions.append(play);
-    const status = el('p', 'p-status'); status.setAttribute('role', 'status');
+    const actions = el('div', 'p-actions'), play = button(got ? 'Продолжить ▶' : 'Играть ▶', 'p-primary', () => open(game)); play.dataset.play = game.id; named(play, (got ? 'Продолжить: ' : 'Играть: ') + game.title); actions.append(play);
+    const status = el('p', 'p-status'); status.setAttribute('role', 'status'); status.id = 'p-st-' + game.id;
     if (mark >= 3) {
-      const better = !sent || got > sent.stars, send = button(sent && !better ? `В журнале: ${sent.mark}` : `Отметка ${mark} — в журнал`, 'p-mark', () => submit(game, send, status)); send.dataset.mark = game.id; send.disabled = !better || !remote; actions.append(send);
+      const better = !sent || got > sent.stars, send = button(sent && !better ? `В журнале: ${sent.mark}` : `Отметка ${mark} — в журнал`, 'p-mark', () => submit(game, send, status)); send.dataset.mark = game.id; send.setAttribute('aria-describedby', status.id); send.disabled = !better || !remote; actions.append(send);
       if (sent && better) status.textContent = `В журнале сейчас ${sent.mark} (★ ${sent.stars}). Можно обновить.`;
       else if (mark < 5) status.textContent = `До отметки ${mark + 1} не хватает ★ ${need(game, mark === 3 ? GRADING.four : GRADING.five) - got}.`;
     } else status.textContent = `Отметка появится, когда наберёшь ★ ${need(game, GRADING.three)} (тройка), ★ ${need(game, GRADING.four)} (четвёрка) или ★ ${need(game, GRADING.five)} (пятёрка).`;
@@ -302,22 +328,23 @@
     try { const r = await fetch('/results/api/practicum/me?' + new URLSearchParams(who()), {cache: 'no-store', signal: AbortSignal.timeout(6000)}); const d = await r.json(); if (r.ok && d.status === 'ok' && mine === player) { me = d; fresh.push(...d.badges.filter(b => b.fresh)); } } catch {}
   }
   function toast() {
-    if (!fresh.length || frame) return; const b = fresh.shift(); if (location.hostname === '127.0.0.1') (window.school4Toasts = window.school4Toasts || []).push(b.id); const box = el('div', 'p-toast'), im = new Image(); im.alt = ''; im.src = `art/badge_${b.id}.webp?v=${P.artVersion || ''}`;
-    box.append(im, el('div', '', ''), ); box.lastChild.append(el('small', '', 'НОВЫЙ ЗНАЧОК'), el('strong', '', b.title), el('span', '', b.how)); document.body.append(box); setTimeout(() => { box.remove(); toast(); }, 5000);
+    if (!fresh.length || frame) return; const b = fresh.shift(); if (location.hostname === '127.0.0.1') (window.school4Toasts = window.school4Toasts || []).push(b.id); const box = el('div', 'p-toast'), im = new Image(); im.alt = ''; box.setAttribute('role', 'status'); document.body.append(box);   // пустая живая область сначала, текст потом — так его зачитает экранный диктор
+     im.src = `art/badge_${b.id}.webp?v=${P.artVersion || ''}`;
+    box.append(im, el('div', '', ''), ); box.lastChild.append(el('small', '', 'НОВЫЙ ЗНАЧОК'), el('strong', '', b.title), el('span', '', b.how)); setTimeout(() => { box.remove(); toast(); }, 5000);
   }
   function extrasServer() {
     const box = el('section', 'p-extras'), dg = me.daily && P.games.find(g => g.id === me.daily.id), st = me.stats, s = me.daily ? me.daily.streak : 0, today = !!(me.daily && me.daily.done);
     const daily = el('div', 'p-daily' + (today ? ' done' : ''));
     if (dg) { daily.append(el('p', 'p-eyebrow', 'ЗАДАНИЕ ДНЯ'), el('h2', '', today ? `Выполнено! ${dg.title}` : `${dg.title}: пройди этап ${nextLevel(dg)}`), el('p', '', today ? 'Возвращайся завтра за новым заданием.' : 'Засчитывается любой этап этой игры, в котором сегодня прибавятся звёзды.'), el('p', 'p-streak', s ? `🔥 серия: ${s} ${s % 10 === 1 && s % 100 !== 11 ? 'день' : s % 10 >= 2 && s % 10 <= 4 && (s % 100 < 12 || s % 100 > 14) ? 'дня' : 'дней'} подряд` : 'Начни серию сегодня!'));
-      if (!today) { const b = button('Играть ▶', 'p-primary', () => open(dg)); b.dataset.daily = dg.id; daily.append(b); } }
+      if (!today) { const b = button('Играть ▶', 'p-primary', () => open(dg)); b.dataset.daily = dg.id; named(b, 'Задание дня: играть в «' + dg.title + '»'); daily.append(b); } }
     const rank = el('div', 'p-rank'); rank.append(el('p', 'p-eyebrow', 'ТВОЙ РАНГ'), el('h2', '', st.rank), el('p', '', `★ ${st.stars} · этапов пройдено: ${st.done} · на три звезды: ${st.three} · игр со звёздами: ${st.games}`));
-    if (st.rankNext) { const bar = el('div', 'p-bar'), f = el('i'); f.style.width = Math.max(4, 100 - st.rankNeed / (st.rankNeed + st.stars) * 100) + '%'; bar.append(f); rank.append(bar, el('p', 'p-note', `До ранга «${st.rankNext}» — ещё ★ ${st.rankNeed}.`)); }
+    if (st.rankNext) { const bar = hide(el('div', 'p-bar')), f = el('i'); f.style.width = Math.max(4, 100 - st.rankNeed / (st.rankNeed + st.stars) * 100) + '%'; bar.append(f); rank.append(bar, el('p', 'p-note', `До ранга «${st.rankNext}» — ещё ★ ${st.rankNeed}.`)); }
     daily.append(rank);
     const league = el('div', 'p-league'); league.append(el('p', 'p-eyebrow', `ЛИГА КЛАССА ${player.className} · ЗВЁЗДЫ ЗА 7 ДНЕЙ`));
     const ol = el('ol'); for (const t of me.league.top) { const li = el('li', t.me ? 'me' : ''); li.append(el('span', '', t.name), el('b', '', `★ ${t.stars}`)); ol.append(li); }
     league.append(me.league.top.length ? ol : el('p', 'p-note', 'На этой неделе звёзд ещё никто не получал — стань первым!'), el('p', 'p-note', me.league.place ? `Ты на ${me.league.place}-м месте из ${me.league.size} (★ ${me.league.stars} за неделю).` : 'Пройди этап, чтобы попасть в лигу этой недели.'));
     const badges = el('div', 'p-badges'); badges.append(el('p', 'p-eyebrow', 'ЗНАЧКИ'));
-    const row = el('div', 'p-badge-row'); for (const x of me.badges) { const b = el('div', 'p-badge' + (x.got ? ' got' : '')); b.title = `${x.title}: ${x.how}` + (x.at ? ` (получен ${x.at.slice(8, 10)}.${x.at.slice(5, 7)})` : ''); const im = new Image(); im.alt = ''; im.src = `art/badge_${x.id}.webp?v=${P.artVersion || ''}`; im.addEventListener('error', () => im.remove()); b.dataset.badge = x.id; b.append(im, el('small', '', x.title)); row.append(b); }
+    const row = el('div', 'p-badge-row'); for (const x of me.badges) { const b = el('div', 'p-badge' + (x.got ? ' got' : '')); b.title = `${x.title}: ${x.how}` + (x.at ? ` (получен ${x.at.slice(8, 10)}.${x.at.slice(5, 7)})` : ''); const im = new Image(); im.alt = ''; im.src = `art/badge_${x.id}.webp?v=${P.artVersion || ''}`; im.addEventListener('error', () => im.remove()); b.dataset.badge = x.id; b.append(im, el('small', '', x.title), sr(x.got ? ' — получен' : ` — ещё не получен. ${x.how}`)); row.append(b); }
     badges.append(row, el('p', 'p-note', `Получено значков: ${me.badges.filter(x => x.got).length} из ${me.badges.length}. Значки выдаёт школьный сервер — они видны с любого компьютера. Наведи на значок, чтобы узнать, как его получить.`), league);
     box.append(daily, badges); setTimeout(toast, 300); return box;
   }
@@ -325,18 +352,18 @@
   function extras2(m) {
     const box = el('section', 'p-extras2'), byId = id => P.games.find(g => g.id === id);
     const warm = el('div', 'p-card2 p-warm'); warm.append(el('p', 'p-eyebrow', 'РАЗМИНКА · 5 МИНУТ'));
-    if (m.warmup && byId(m.warmup.game)) { const w = m.warmup; warm.append(el('h3', '', `Тема «${w.area}» — у тебя ${Math.round(w.pct * 100)} %`), el('p', '', `${w.title}, этап ${w.level}`)); const b = button('Начать разминку ▶', 'p-primary', () => open(byId(w.game), w.level)); b.dataset.warmup = w.game; warm.append(b); }
+    if (m.warmup && byId(m.warmup.game)) { const w = m.warmup; warm.append(el('h3', '', `Тема «${w.area}» — у тебя ${Math.round(w.pct * 100)} %`), el('p', '', `${w.title}, этап ${w.level}`)); const b = button('Начать разминку ▶', 'p-primary', () => open(byId(w.game), w.level)); b.dataset.warmup = w.game; named(b, `Начать разминку: ${w.title}, этап ${w.level}`); warm.append(b); }
     else warm.append(el('p', 'p-note', 'Пройди пару этапов в разных играх — и здесь появится разминка по твоей слабой теме.'));
     warm.append(el('p', 'p-eyebrow p-sub', 'ПОВТОРЕНИЕ'));
-    if (m.review && m.review.length) { const ul = el('ul', 'p-review'); for (const r of m.review) { const g = byId(r.game); if (!g) continue; const li = el('li'), b = button('Повторить', 'p-small', () => open(g, r.level)); b.dataset.review = r.game + '-' + r.level; li.append(el('span', '', `${r.title}, этап ${r.level}`), el('small', '', `повтор ${r.step} из 3`), b); ul.append(li); } warm.append(ul); }
+    if (m.review && m.review.length) { const ul = el('ul', 'p-review'); for (const r of m.review) { const g = byId(r.game); if (!g) continue; const li = el('li'), b = button('Повторить', 'p-small', () => open(g, r.level)); b.dataset.review = r.game + '-' + r.level; named(b, `Повторить: ${r.title}, этап ${r.level}`); li.append(el('span', '', `${r.title}, этап ${r.level}`), el('small', '', `повтор ${r.step} из 3`), b); ul.append(li); } warm.append(ul); }
     else warm.append(el('p', 'p-note', 'Повторять пока нечего: пройденные этапы вернутся сюда через 3, 7 и 14 дней.'));
     const se = el('div', 'p-card2 p-season'), sn = m.season; const sb = new Image(); sb.alt = ''; sb.className = 'p-sbadge' + (sn.got ? ' got' : ''); sb.src = `art/season_${sn.badge}.webp?v=${P.artVersion || ''}`;
-    const bar = el('div', 'p-bar'), f = el('i'); f.style.width = Math.min(100, sn.stars / sn.goal * 100) + '%'; bar.append(f);
+    const bar = hide(el('div', 'p-bar')), f = el('i'); f.style.width = Math.min(100, sn.stars / sn.goal * 100) + '%'; bar.append(f);
     se.append(el('p', 'p-eyebrow', `СЕЗОН · ЕЩЁ ${sn.left} ДН.`), sb, el('h3', '', sn.name), el('p', '', sn.got ? 'Значок сезона получен! 🏅' : `★ ${sn.stars} из ${sn.goal} до значка сезона`), bar);
     if (sn.top.length) { const ol = el('ol', 'p-stop'); for (const t of sn.top) { const li = el('li', t.me ? 'me' : ''); li.append(el('span', '', t.name), el('b', '', '★ ' + t.stars)); ol.append(li); } se.append(ol); }
     const tr = el('div', 'p-card2 p-tour'); tr.append(el('p', 'p-eyebrow', `ТУРНИР КЛАССОВ · ${data.grade} ПАРАЛЛЕЛЬ · НЕДЕЛЯ`));
     const mx = Math.max(1, ...m.classes.map(x => x.stars));
-    if (m.classes.length) for (const c of m.classes) { const row = el('div', 'p-trow' + (c.mine ? ' me' : '')), b2 = el('div', 'p-tbar'), fi = el('i'); fi.style.width = c.stars / mx * 100 + '%'; b2.append(fi); row.append(el('span', '', c.className), b2, el('b', '', '★ ' + c.stars)); tr.append(row); }
+    if (m.classes.length) for (const c of m.classes) { const row = el('div', 'p-trow' + (c.mine ? ' me' : '')), b2 = hide(el('div', 'p-tbar')), fi = el('i'); fi.style.width = c.stars / mx * 100 + '%'; b2.append(fi); row.append(el('span', '', c.className), b2, el('b', '', '★ ' + c.stars)); tr.append(row); }
     else tr.append(el('p', 'p-note', 'На этой неделе классы ещё не набирали звёзд.'));
     tr.append(el('p', 'p-note', 'Звёзды всех учеников класса за последние 7 дней.'));
     box.append(warm, se, tr); return box;
@@ -346,9 +373,9 @@
     if (me) return extrasServer();
     const box = el('section', 'p-extras'), g = dailyGame(), today = !!player.levels[dayKey(new Date())], s = streak();
     const daily = el('div', 'p-daily' + (today ? ' done' : '')); daily.append(el('p', 'p-eyebrow', 'ЗАДАНИЕ ДНЯ'), el('h2', '', today ? `Выполнено! ${g.title}` : `${g.title}: пройди этап ${nextLevel(g)}`), el('p', '', today ? 'Возвращайся завтра за новым заданием.' : 'Засчитывается любой этап этой игры, пройденный сегодня.'), el('p', 'p-streak', s ? `🔥 серия: ${s} ${s % 10 === 1 && s % 100 !== 11 ? 'день' : s % 10 >= 2 && s % 10 <= 4 && (s % 100 < 12 || s % 100 > 14) ? 'дня' : 'дней'} подряд` : 'Начни серию сегодня!'));
-    if (!today) { const b = button('Играть ▶', 'p-primary', () => open(g)); b.dataset.daily = g.id; daily.append(b); }
+    if (!today) { const b = button('Играть ▶', 'p-primary', () => open(g)); b.dataset.daily = g.id; named(b, 'Задание дня: играть в «' + g.title + '»'); daily.append(b); }
     const badges = el('div', 'p-badges'); badges.append(el('p', 'p-eyebrow', 'ЗНАЧКИ'));
-    const row = el('div', 'p-badge-row'); for (const [id, title, how, test] of BADGES) { const got = test(), b = el('div', 'p-badge' + (got ? ' got' : '')); b.title = `${title}: ${how}`; const im = new Image(); im.alt = ''; im.src = `art/badge_${id}.webp?v=${P.artVersion || ''}`; im.addEventListener('error', () => im.remove()); b.dataset.badge = id; b.append(im, el('small', '', title)); row.append(b); }
+    const row = el('div', 'p-badge-row'); for (const [id, title, how, test] of BADGES) { const got = test(), b = el('div', 'p-badge' + (got ? ' got' : '')); b.title = `${title}: ${how}`; const im = new Image(); im.alt = ''; im.src = `art/badge_${id}.webp?v=${P.artVersion || ''}`; im.addEventListener('error', () => im.remove()); b.dataset.badge = id; b.append(im, el('small', '', title), sr(got ? ' — получен' : ` — ещё не получен. ${how}`)); row.append(b); }
     badges.append(row, el('p', 'p-note', `Получено значков: ${BADGES.filter(x => x[3]()).length} из ${BADGES.length}. Наведи на значок, чтобы узнать, как его получить.`));
     box.append(daily, badges); return box;
   }
@@ -368,9 +395,9 @@
     const more = el('section', 'p-more'); more.append(el('h2', '', 'Ещё игры этого класса'));
     const links = el('div', 'p-links'); for (const l of P.links) { const a = el('a', 'p-link'); a.href = l.url; const kind = /-crew\//.test(l.url) ? 'crew' : /-glitch\//.test(l.url) ? 'glitch' : /-kodograd\//.test(l.url) ? 'kodograd' : /typing-escape/.test(l.url) ? 'typing' : 'adventure', pic = new Image(); pic.className = 'p-linkpic'; pic.alt = ''; pic.src = `art/link_${kind}.webp?v=${P.artVersion || ''}`; pic.addEventListener('error', () => pic.remove()); a.append(pic, el('strong', '', l.title), el('span', '', l.about), el('small', '', l.note)); a.addEventListener('click', e => { if (e.ctrlKey || e.metaKey || e.shiftKey || e.button) return; e.preventDefault(); open({title: l.title, url: l.url, link: true}); }); links.append(a); } more.append(links);
     const grades = el('nav', 'p-grades'); grades.setAttribute('aria-label', 'Другие классы'); grades.append(el('span', '', 'Другой класс:'));
-    for (let g = 6; g <= 11; g++) { const a = el('a', g === data.grade ? 'now' : '', String(g)); a.href = `/courses/game-${g}-practicum/`; grades.append(a); }
+    for (let g = 6; g <= 11; g++) { const a = el('a', g === data.grade ? 'now' : '', String(g)); if (g === data.grade) a.setAttribute('aria-current', 'page'); a.href = `/courses/game-${g}-practicum/`; grades.append(a); }
     const parts = [head, intro]; if (notice) parts.push(el('p', 'p-note', notice)); if (!remote) parts.push(el('p', 'p-note', 'Журнал сейчас недоступен: прогресс хранится только на этом компьютере, отметки не отправляются.'));
-    root.replaceChildren(...parts, extras(), grid, more, grades);
+    paint(...parts, extras(), grid, more, grades);
   }
 
   function open(game, level) {
@@ -383,8 +410,9 @@
     frame.src = game.link ? game.url : game.url ? `${game.url}?${game.params}&player=${playerKey()}${level ? '&level=' + level : ''}` : `${P.gameUrl}?v=${P.version}&grade=${data.grade}&${game.params}&player=${playerKey()}`;
     const full = button('На весь экран', 'p-small', () => { (shell.requestFullscreen || shell.webkitRequestFullscreen).call(shell); frame.focus(); });
     const back = button('← К списку игр', 'p-small', () => close(true)); back.dataset.act = 'close';
-    const live = el('span', 'p-live', `${player.name} · ${game.title}`); live.dataset.live = '1';
-    bar.append(back, live, el('span', 'p-hint', 'Если игра не реагирует на клавиши — щёлкни по ней мышью.'), full); shell.append(bar, frame); document.body.append(shell); document.body.classList.add('p-playing');
+    const live = el('span', 'p-live', `${player.name} · ${game.title}`); live.dataset.live = '1'; live.setAttribute('aria-live', 'polite');
+    bar.append(back, live, el('span', 'p-hint', 'Если игра не реагирует на клавиши — щёлкни по ней мышью. Esc на этой панели — к списку игр.'), full); shell.append(bar, frame); document.body.append(shell); document.body.classList.add('p-playing');
+    shell.release = layer(shell, shell, 'Игра «' + game.title + '»', () => { if (!document.fullscreenElement) close(true); }); back.focus();
     frame.addEventListener('load', () => { frame.focus(); tidy(game); });
   }
   // Внутри окна практикума прячем шапку портала (её ссылки вели в старый каталог и меню игр),
@@ -400,7 +428,7 @@
   function close(redraw) {
     const shell = document.querySelector('.p-player'); if (!shell) return;
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    shell.remove(); frame = null; document.body.classList.remove('p-playing'); if (redraw && player) { const mine = player; (pushing || Promise.resolve()).catch(() => {}).then(stats).then(() => { if (mine === player && !frame && root.querySelector('.p-grid')) list(); }); list(); }   // свежая статистика — только если ученик всё ещё на списке игр
+    shell.remove(); frame = null; document.body.classList.remove('p-playing'); shell.release?.(); if (redraw && player) { const mine = player; (pushing || Promise.resolve()).catch(() => {}).then(stats).then(() => { if (mine === player && !frame && root.querySelector('.p-grid')) list(); }); list(); }   // свежая статистика — только если ученик всё ещё на списке игр
   }
   window.addEventListener('message', e => {
     // Сообщения принимаются только от своей игры, с этого же сайта.
@@ -430,7 +458,7 @@
   }
 
   (async () => {
-    root.replaceChildren(el('p', '', 'Загружаем практикум…'));
+    root.replaceChildren(el('p', '', 'Загружаем практикум…')); root.firstChild.setAttribute('role', 'status');
     try { classes = await call('classes?slug=' + P.apiSlug, null, 3500); remote = true; } catch { remote = false; }
     try { const key = sessionStorage.getItem(STORE), w = JSON.parse(sessionStorage.getItem(WHO) || 'null'); if (key && store.profiles[key] && w && Date.now() - w.at < IDLE) { player = store.profiles[key]; remember(); } } catch {}
     if (player && remote) try { await pull(); } catch (error) { if (error.status === 403) player = null; }
