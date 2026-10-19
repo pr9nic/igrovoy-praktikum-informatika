@@ -1,10 +1,15 @@
 extends "res://arcade/game.gd"
 # «Кодополия»: настольная игра про информатику в духе «Монополии» и Mario Party.
 # Ты и три бота ходите по кольцу из 28 клеток: покупаете кварталы, платите аренду (верный ответ «файрвола знаний» снижает её вдвое),
-# собираете кристаллы знаний, покупаете предметы, тянете карты «Вирус / Обновление». После каждого раунда — мини-игра на скорость для всех.
+# собираете кристаллы знаний, покупаете предметы, тянете карты «Вирус / Обновление». Квартал, который не купили (отказ или не хватило
+# байтов), уходит с торгов: ставки по кругу +1 / +3 / +5 или пас. Со 2-го раунда каждые три раунда — событие раунда (хакатон, DDoS-атака,
+# распродажа, обновление сервера, пиковая нагрузка, акция на кристаллы). После каждого раунда — мини-игра на скорость для всех:
+# двоичная запись, «что больше», быстрый вопрос, «истина или ложь», «что выведет программа», с 7-го класса — IP-адрес и маска файлов.
 # Побеждает тот, у кого больше кристаллов (при равенстве — байтов). Звёзды этапа — за место: 1-е — три, 2-е — две, остальные — одна.
+# Правила без графики (мини-игры, торги, события) — в kp_logic.gd; tests/kodopolia.gd проверяет их и доигрывает партии ботов.
 
 const Q = preload("res://cells/questions.gd")
+const KP = preload("res://arcade/kp_logic.gd")
 const N := 28
 const X0 := 30.0
 const Y0 := 78.0
@@ -67,6 +72,13 @@ var qbank: Array = []
 var kp := {}
 var placings: Array = []
 var bot_t := 0.0
+var mini_order: Array = []  # порядок видов мини-игр на партию
+var round_ev := ""          # событие текущего раунда (KP.EVENTS) или ""
+var ev_group := -1          # квартал, который «положила» DDoS-атака
+var last_ev := ""
+var auc: Dictionary = {}    # идущие торги: участок, ставка, лидер, кто спасовал, пределы ботов
+var bank := 0               # сколько байтов выдал банк минус сколько забрал: сверка в tests/kodopolia.gd
+var stats := {}
 # Сетевая партия из лобби практикума: host — партию ведёт этот компьютер (создатель лобби), guest — показываем снимок создателя.
 var net := ""
 var my := 0
@@ -91,6 +103,7 @@ func setup() -> void:
 	stages = 3
 	rules = ["Настольная игра про информатику: ты и три бота ходите по кругу и собираете кристаллы знаний.",
 		"Покупай кварталы, получай аренду; ответь верно «файрволу знаний» — заплатишь половину.",
+		"Не купленный квартал — на торги. Каждые 3 раунда — событие: хакатон, DDoS, распродажа…",
 		"Кристалл стоит %d байтов, после покупки он переезжает. Магазин, вирусы, портал, карантин." % CRYSTAL,
 		"После каждого раунда — мини-игра на скорость. Пробел — бросить кубик, 1–4 — выбрать ответ."]
 	for n in ["kp_board1", "kp_board2", "kp_board3", "kp_token0", "kp_token1", "kp_token2", "kp_token3", "kp_icon0", "kp_icon1", "kp_icon2", "kp_icon3", "kp_icon4", "kp_icon5", "kp_icon6", "kp_icon7",
@@ -111,6 +124,7 @@ func setup() -> void:
 			JavaScriptBridge.eval(NET_JS % [int(kd.get("table", 0)), JSON.stringify(str(kd["token"]))])
 			rules = ["Сетевая партия «%s»: одноклассники играют за своими компьютерами." % str(kd.get("title", "")),
 				"Свободные места занимают боты. Ход каждого — на его компьютере.",
+				"Не купленный квартал уходит с торгов. Каждые три раунда — событие раунда.",
 				"Кристалл стоит %d байтов. Пробел — бросить кубик, 1–4 — выбрать ответ." % CRYSTAL]
 
 func goal_text() -> String:
@@ -144,6 +158,13 @@ func reset() -> void:
 	placings = []
 	score = players[my]["bytes"]
 	bot_t = 0.0
+	mini_order = KP.mini_order(grade, rng)
+	round_ev = ""
+	ev_group = -1
+	last_ev = ""
+	auc = {}
+	bank = 0
+	stats = {"crystals": 0, "auctions": 0, "sold": 0, "events": 0}
 
 func stage_stars() -> int:
 	var place := placings.find(my) + 1
@@ -191,7 +212,22 @@ func _rent(sp: Dictionary) -> int:
 		r *= 2
 	if int(sp["up"]) > 0:
 		r *= 2
-	return r
+	return KP.event_rent(r, round_ev, ev_group, int(sp["group"]))
+
+func _crystal_price() -> int:
+	return KP.event_crystal(CRYSTAL, round_ev)
+
+func _reward(n: int) -> int:
+	# Награда за верный ответ: в «Хакатон» — вдвое больше.
+	return KP.event_reward(n, round_ev)
+
+func _bt(n: int) -> String:
+	return "%d %s" % [n, Fmt.plural(n, "байт", "байта", "байтов")]
+
+func _earn(pl: Dictionary, n: int) -> void:
+	# Байты из банка (n > 0) или в банк (n < 0); переводы между игроками идут мимо банка.
+	pl["bytes"] = int(pl["bytes"]) + n
+	bank += n
 
 # ---------- ход ----------
 
@@ -251,7 +287,7 @@ func _hop() -> void:
 	sfx.emit("step")
 	steps_left -= 1
 	if pl["pos"] == 0:
-		pl["bytes"] += PASS_START
+		_earn(pl, PASS_START)
 		say("%s проходит Старт: +%d байта." % [pl["name"], PASS_START])
 	if pl["pos"] == crystal_at and steps_left > 0:
 		_offer_crystal(func(): phase = "move")
@@ -259,21 +295,23 @@ func _hop() -> void:
 
 func _offer_crystal(then: Callable) -> void:
 	var pl := p()
-	if int(pl["bytes"]) < CRYSTAL:
+	var price := _crystal_price()
+	if int(pl["bytes"]) < price:
 		if not pl["bot"]:
-			say("Кристалл знаний стоит %d байтов — пока не хватает." % CRYSTAL)
+			say("Кристалл знаний стоит %d байтов — пока не хватает." % price)
 		then.call()
 		return
 	var cb := func(i: int):
 		if i == 0:
-			pl["bytes"] -= CRYSTAL
+			_earn(pl, -price)
 			pl["crystals"] += 1
+			stats["crystals"] += 1
 			say("%s получает кристалл знаний!" % pl["name"])
 			burst(_center(crystal_at), Color("c08bff"), 40, 420.0, "p_star", 34.0)
 			sfx.emit("win")
 			crystal_at = _free_space(crystal_at)
 		then.call()
-	dialog("Кристалл знаний!", "Купить кристалл за %d байтов?" % CRYSTAL, ["Купить", "Пройти мимо"], cb, 0)
+	dialog("Кристалл знаний!", "Купить кристалл за %d байтов?" % price, ["Купить", "Пройти мимо"], cb, 0)
 
 func _land() -> void:
 	var pl := p()
@@ -292,11 +330,12 @@ func _resolve(sp: Dictionary) -> void:
 		"lot":
 			_lot(sp)
 		"quiz":
+			var gain := _reward(4)
 			var cbq := func(ok: bool):
 				if ok:
-					pl["bytes"] += 4
+					_earn(pl, gain)
 				_end_soon()
-			ask("Клетка знаний", "Верный ответ — +4 байта.", cbq)
+			ask("Клетка знаний", "Верный ответ — +%s." % _bt(gain), cbq)
 		"chance":
 			_card()
 		"shop":
@@ -324,22 +363,24 @@ func _lot(sp: Dictionary) -> void:
 	if owner == -1:
 		if int(pl["bytes"]) < price:
 			say("«%s» стоит %d байтов — не хватает." % [sp["name"], price])
-			_end_soon()
+			_auction(sp)
 			return
 		var want := 0 if (int(pl["bytes"]) - price >= 4 and rng.randf() < 0.85) else 1
 		var cbb := func(i: int):
 			if i == 0:
-				pl["bytes"] -= price
+				_earn(pl, -price)
 				sp["owner"] = cur
 				say("%s покупает «%s»." % [pl["name"], sp["name"]])
 				sfx.emit("deliver")
-			_end_soon()
-		dialog(sp["name"], "%s · цена %d байтов, аренда %d.\nКупить участок?" % [GROUPS[sp["group"]]["name"], price, price / 2], ["Купить", "Не покупать"], cbb, want)
+				_end_soon()
+			else:
+				_auction(sp)
+		dialog(sp["name"], "%s · цена %d байтов, аренда %d.\nКупить участок? Если нет — он уйдёт с торгов." % [GROUPS[sp["group"]]["name"], price, price / 2], ["Купить", "Не покупать"], cbb, want)
 	elif owner == cur:
 		if int(sp["up"]) == 0 and int(pl["bytes"]) >= price:
 			var cbu := func(i: int):
 				if i == 0:
-					pl["bytes"] -= price
+					_earn(pl, -price)
 					sp["up"] = 1
 					say("%s улучшает «%s»." % [pl["name"], sp["name"]])
 				_end_soon()
@@ -349,6 +390,10 @@ func _lot(sp: Dictionary) -> void:
 	else:
 		var rent := _rent(sp)
 		var lord: Dictionary = players[owner]
+		if rent <= 0:
+			say("DDoS-атака: «%s» в этом раунде аренду не берёт." % sp["name"])
+			_end_soon()
+			return
 		if pl["items"].has("firewall"):
 			pl["items"].erase("firewall")
 			say("Брандмауэр %s защитил от аренды!" % ("тебя" if not pl["bot"] else pl["name"]))
@@ -372,11 +417,11 @@ func _card() -> void:
 					pl["items"].erase("antivirus")
 					say("Антивирус остановил шифровальщика!")
 				else:
-					pl["bytes"] = maxi(0, int(pl["bytes"]) - 5)
+					_earn(pl, -mini(5, int(pl["bytes"])))
 			"update":
-				pl["bytes"] += 4
+				_earn(pl, 4)
 			"bug":
-				pl["bytes"] += 3
+				_earn(pl, 3)
 			"power":
 				pl["skip"] = true
 			"sync":
@@ -407,11 +452,12 @@ func _card() -> void:
 				say("%s бросает ещё раз!" % pl["name"])
 				return
 			"expert":
+				var gain := _reward(6)
 				var cbe := func(ok: bool):
 					if ok:
-						pl["bytes"] += 6
+						_earn(pl, gain)
 					_end_soon()
-				ask("Вопрос эксперта", "Верный ответ — +6 байтов.", cbe)
+				ask("Вопрос эксперта", "Верный ответ — +%s." % _bt(gain), cbe)
 				return
 		_end_soon()
 	dialog("Карта: " + ("Вирус" if c[0] in ["virus", "phish", "power"] else "Обновление"), c[1], ["OK"], func(_i: int): done.call(), 0)
@@ -419,34 +465,119 @@ func _card() -> void:
 func _shop() -> void:
 	var pl := p()
 	var opts := []
+	var cost := []
 	for it in ITEMS:
-		opts.append("%s — %d байтов (%s)" % [it["name"], it["price"], it["about"]])
+		cost.append(KP.event_shop(int(it["price"]), round_ev))
+		opts.append("%s — %s (%s)" % [it["name"], _bt(int(cost[-1])), it["about"]])
 	opts.append("Уйти из магазина")
 	var pick := ITEMS.size()
 	if pl["bot"]:
 		var can := []
 		for k in ITEMS.size():
-			if int(pl["bytes"]) >= int(ITEMS[k]["price"]) + 6:
+			if int(pl["bytes"]) >= int(cost[k]) + 6:
 				can.append(k)
 		if can.size() and pl["items"].size() < 3:
 			pick = can[rng.randi_range(0, can.size() - 1)]
 	var cbs := func(i: int):
 		if i < ITEMS.size():
 			var it: Dictionary = ITEMS[i]
-			if int(pl["bytes"]) < int(it["price"]) or pl["items"].size() >= 3:
+			var c: int = cost[i]
+			if int(pl["bytes"]) < c or pl["items"].size() >= 3:
 				say("Не хватает байтов или места для предмета.")
 			else:
-				pl["bytes"] -= int(it["price"])
+				_earn(pl, -c)
 				pl["items"].append(it["id"])
 				say("%s покупает: %s." % [pl["name"], it["name"]])
 				sfx.emit("deliver")
 		_end_soon()
-	dialog("Магазин", "Предметов можно держать не больше трёх.", opts, cbs, pick)
+	dialog("Магазин", "Предметов можно держать не больше трёх." + (" Распродажа: всё вдвое дешевле!" if round_ev == "sale" else ""), opts, cbs, pick)
+
+# ---------- торги ----------
+# Правила (старт, шаги, очередь, пределы ботов) — в kp_logic.gd. Ставит каждый по очереди в своём окне выбора,
+# в сетевой партии — обычным вводом «choose» с номером варианта; пас — выход из торгов, автопилот за отключившегося пасует.
+
+func _auction(sp: Dictionary) -> void:
+	var opening: int = KP.auction_start(int(sp["price"]))
+	var lims := []
+	for k in 4:
+		lims.append(_bot_limit(k, sp))
+	auc = {"sp": sp, "bid": opening - 1, "lead": -1, "out": [false, false, false, false], "turn": cur, "limits": lims}
+	stats["auctions"] += 1
+	say("«%s» уходит с торгов: старт — %s." % [sp["name"], _bt(opening)])
+	_auction_next()
+
+func _bot_limit(k: int, sp: Dictionary) -> int:
+	var g: int = sp["group"]
+	var per := [0, 0, 0, 0]
+	var count := 0
+	for s in spaces:
+		if s["type"] == "lot" and int(s["group"]) == g:
+			count += 1
+			if int(s["owner"]) >= 0:
+				per[int(s["owner"])] += 1
+	var theirs := 0
+	for o in 4:
+		if o != k:
+			theirs = maxi(theirs, int(per[o]))
+	return KP.auction_limit(int(sp["price"]), int(players[k]["bytes"]), int(per[k]), theirs, count, skill, rng.randi_range(-1, 1), _crystal_price())
+
+func _auction_next() -> void:
+	var sp: Dictionary = auc["sp"]
+	var bytes := []
+	for pl in players:
+		bytes.append(int(pl["bytes"]))
+	var k: int = KP.auction_next(int(auc["turn"]), int(auc["lead"]), auc["out"], bytes, int(auc["bid"]))
+	if k < 0:
+		_auction_end()
+		return
+	auc["turn"] = k
+	var bid: int = auc["bid"]
+	var lead: int = auc["lead"]
+	var steps: Array = KP.auction_steps(bid, int(players[k]["bytes"]))
+	var opts := []
+	for s in steps:
+		opts.append("Ставка %s (+%d)" % [_bt(bid + int(s)), int(s)])
+	opts.append("Пас")
+	var pick := steps.size()
+	if players[k]["bot"]:
+		var st: int = KP.auction_bot_step(bid, int(auc["limits"][k]), rng.randf())
+		if st > 0 and steps.has(st):
+			pick = steps.find(st)
+	var now := "Стартовая ставка — %s." % _bt(bid + 1)
+	if lead >= 0:
+		now = "Ставка сейчас: %s — %s." % [_bt(bid), players[lead]["name"]]
+	var cb := func(i: int):
+		if i < steps.size():
+			auc["bid"] = bid + int(steps[i])
+			auc["lead"] = k
+			say("Торги: %s ставит %s." % [players[k]["name"], _bt(int(auc["bid"]))])
+		else:
+			auc["out"][k] = true
+		_auction_next()
+	dialog("Торги: " + str(sp["name"]), "%s · цена %d байтов. Пас — выход из торгов.\n%s Ставит: %s." % [GROUPS[sp["group"]]["name"], int(sp["price"]), now, players[k]["name"]], opts, cb, pick, k)
+	dlg["t"] = 0.8
+
+func _auction_end() -> void:
+	var sp: Dictionary = auc["sp"]
+	var lead: int = auc["lead"]
+	var bid: int = auc["bid"]
+	auc = {}
+	if lead >= 0:
+		_earn(players[lead], -bid)
+		sp["owner"] = lead
+		stats["sold"] += 1
+		say("%s выигрывает торги: «%s» за %s." % [players[lead]["name"], sp["name"], _bt(bid)])
+		sfx.emit("deliver")
+	else:
+		say("На «%s» никто не поставил." % sp["name"])
+	_end_soon()
 
 # ---------- окна выбора и вопросы ----------
 
-func dialog(head: String, body: String, opts: Array, cb: Callable, bot_pick: int = 0) -> void:
-	dlg = {"head": head, "body": body, "opts": opts, "cb": cb, "bot": p()["bot"], "bot_pick": clampi(bot_pick, 0, opts.size() - 1), "t": 1.3, "who": cur}
+func dialog(head: String, body: String, opts: Array, cb: Callable, bot_pick: int = 0, who: int = -1) -> void:
+	# who — кто выбирает (на торгах это не обязательно тот, чей ход); bot_pick — выбор бота и автопилота за отключившегося.
+	var seat: int = cur if who < 0 else who
+	dlg = {"head": head, "body": body, "opts": opts, "cb": cb, "bot": players[seat]["bot"], "bot_pick": clampi(bot_pick, 0, opts.size() - 1), "t": 1.3, "who": seat}
 	phase = "dialog"
 
 func choose(i: int) -> void:
@@ -490,62 +621,33 @@ func _question() -> Dictionary:
 # ---------- мини-игры ----------
 
 func _start_mini() -> void:
+	# Вид мини-игры — по кругу из перемешанного на партию списка (KP.mini_order): за 8+ раундов встречаются все виды.
 	mini_n += 1
-	var kind: String = ["bin", "max", "quiz"][(round_n - 1) % 3]
+	if mini_order.is_empty():
+		mini_order = KP.mini_order(grade, rng)
+	var kind: String = mini_order[(round_n - 1) % mini_order.size()]
 	var opts: Array = []
 	var right := 0
 	var q := ""
-	if kind == "bin":
-		var top := 15 if grade <= 6 else (63 if grade == 7 else 255)
-		var n := rng.randi_range(3, top)
-		var bits := 4 if top == 15 else (6 if top == 63 else 8)
-		var vals := [n]
-		while vals.size() < 4:
-			var v := clampi(n ^ (1 << rng.randi_range(0, bits - 1)), 1, top) if rng.randf() < 0.7 else rng.randi_range(1, top)
-			if not vals.has(v):
-				vals.append(v)
-		vals.shuffle()
-		right = vals.find(n)
-		for v in vals:
-			opts.append(String.num_int64(v, 2).pad_zeros(bits))
-		q = "Двоичная дуэль: какая запись равна числу %d?" % n
-	elif kind == "max":
-		if grade >= 8:
-			var vals := []
-			while vals.size() < 4:
-				var v := rng.randi_range(20, 255)
-				if not vals.has(v):
-					vals.append(v)
-			var bases := [2, 8, 10, 16]
-			bases.shuffle()
-			var mx: int = vals.max()
-			for k in 4:
-				var b: int = bases[k]
-				opts.append(String.num_int64(vals[k], b).to_upper() + {2: "₂", 8: "₈", 10: "₁₀", 16: "₁₆"}[b])
-			right = vals.find(mx)
-			q = "Найди самое большое число!"
-		else:
-			var pool := [["12 бит", 12], ["2 байта", 16], ["1 байт", 8], ["20 бит", 20], ["3 байта", 24], ["30 бит", 30], ["4 байта", 32], ["10 бит", 10]]
-			pool.shuffle()
-			var pick4 := pool.slice(0, 4)
-			var best_i := 0
-			for k in 4:
-				opts.append(pick4[k][0])
-				if int(pick4[k][1]) > int(pick4[best_i][1]):
-					best_i = k
-			right = best_i
-			q = "Что больше? (1 байт = 8 бит)"
-	else:
+	var code: Array = []
+	if kind == "quiz":
 		var qq := _question()
 		opts = [qq["a"]] + qq["w"]
 		opts.shuffle()
 		right = opts.find(qq["a"])
 		q = "Быстрый вопрос: " + str(qq["q"])
+	else:
+		var m: Dictionary = KP.mini_make(kind, grade, rng)
+		opts = m["opts"]
+		right = int(m["right"])
+		q = str(m["q"])
+		code = m["code"]
 	var bots := []
 	for k in 4:
 		var human: bool = not players[k]["bot"]
 		bots.append({"t": 99.0 if human else rng.randf_range(1.2, 4.6) * (1.45 - skill), "ok": false if human else rng.randf() < skill, "done": false, "human": human, "pick": -1})
-	mini = {"kind": kind, "q": q, "opts": opts, "right": right, "t": 0.0, "limit": 9.0, "pick": -1, "pt": 0.0, "bots": bots}
+	# Программу надо прочитать — на неё больше времени.
+	mini = {"kind": kind, "q": q, "code": code, "opts": opts, "right": right, "t": 0.0, "limit": 12.0 if code.size() else 9.0, "pick": -1, "pt": 0.0, "bots": bots}
 	phase = "mini"
 	sfx.emit("click")
 
@@ -574,8 +676,9 @@ func _mini_finish() -> void:
 	var prize := [6, 4, 2, 1]
 	var lines := []
 	for k in res.size():
-		players[res[k][0]]["bytes"] += prize[k]
-		lines.append("%s +%d" % [players[res[k][0]]["name"], prize[k]])
+		var gain := _reward(int(prize[k]))
+		_earn(players[res[k][0]], gain)
+		lines.append("%s +%d" % [players[res[k][0]]["name"], gain])
 	mini["result"] = lines
 	phase = "mini_res"
 	wait_t = 2.6
@@ -585,11 +688,43 @@ func _mini_finish() -> void:
 func _after_mini() -> void:
 	mini = {}
 	round_n += 1
+	round_ev = ""
+	ev_group = -1
 	if round_n > rounds:
 		_finish()
 		return
 	say("Раунд %d из %d." % [round_n, rounds])
+	if KP.event_round(round_n):
+		_round_event()
+		return
 	_begin_turn()
+
+func _round_event() -> void:
+	# Карта события на весь раунд: её видят все, ответа не нужно.
+	round_ev = KP.event_pick(rng, last_ev)
+	last_ev = round_ev
+	stats["events"] += 1
+	if round_ev == "ddos":
+		# «Кладём» квартал, где уже есть хозяева, — так событие заметно.
+		var owned := []
+		for s in spaces:
+			if s["type"] == "lot" and int(s["owner"]) >= 0 and not owned.has(int(s["group"])):
+				owned.append(int(s["group"]))
+		ev_group = owned[rng.randi_range(0, owned.size() - 1)] if owned.size() else rng.randi_range(0, GROUPS.size() - 1)
+	elif round_ev == "update":
+		crystal_at = _free_space(crystal_at)
+		burst(_center(crystal_at), Color("c08bff"), 30, 360.0)
+	say("Событие раунда: %s." % KP.event_name(round_ev))
+	dlg = {"head": "Событие раунда: " + KP.event_name(round_ev), "body": _event_text(false), "opts": [], "feedback": true, "ok": true}
+	phase = "wait"
+	wait_t = 2.6
+	next_call = func():
+		dlg = {}
+		_begin_turn()
+	sfx.emit("win")
+
+func _event_text(brief: bool) -> String:
+	return KP.event_text(round_ev, str(GROUPS[ev_group]["name"]) if ev_group >= 0 and ev_group < GROUPS.size() else "", brief)
 
 func _finish() -> void:
 	var order := [0, 1, 2, 3]
@@ -612,7 +747,7 @@ func tick(delta: float) -> void:
 			if p()["bot"]:
 				bot_t -= delta
 				if bot_t <= 0.0:
-					if p()["items"].has("link") and int(p()["bytes"]) >= CRYSTAL and rng.randf() < 0.7:
+					if p()["items"].has("link") and int(p()["bytes"]) >= _crystal_price() and rng.randf() < 0.7:
 						_use_link()
 					else:
 						roll()
@@ -815,9 +950,9 @@ func _snap() -> Dictionary:
 		var bs := []
 		for b in mini["bots"]:
 			bs.append({"done": b["done"], "human": b["human"], "ok": b["ok"] if res else false, "t": b["t"] if res else 0.0, "pick": b["pick"] if res else -1})
-		m = {"kind": mini["kind"], "q": mini["q"], "opts": mini["opts"], "right": mini["right"] if res else -1, "t": mini["t"], "limit": mini["limit"], "result": mini.get("result", []), "bots": bs}
+		m = {"kind": mini["kind"], "q": mini["q"], "code": mini.get("code", []), "opts": mini["opts"], "right": mini["right"] if res else -1, "t": mini["t"], "limit": mini["limit"], "result": mini.get("result", []), "bots": bs}
 	return {"seq": net_seq, "state": state, "players": ps, "own": own, "cur": cur, "round": round_n, "rounds": rounds, "phase": phase, "dice": dice,
-		"crystal": crystal_at, "log": log_lines, "double": use_double, "dlg": d, "mini": m, "placings": placings}
+		"crystal": crystal_at, "log": log_lines, "double": use_double, "dlg": d, "mini": m, "placings": placings, "ev": round_ev, "evg": ev_group}
 
 func _apply(sn: Dictionary) -> void:
 	wait_snap = false
@@ -849,6 +984,8 @@ func _apply(sn: Dictionary) -> void:
 	crystal_at = int(sn.get("crystal", crystal_at))
 	log_lines = sn.get("log", [])
 	use_double = bool(sn.get("double", false))
+	round_ev = str(sn.get("ev", ""))
+	ev_group = int(sn.get("evg", -1))
 	dlg = sn.get("dlg", {})
 	mini = sn.get("mini", {})
 	if not mini.is_empty():
@@ -886,7 +1023,7 @@ func debug() -> Dictionary:
 		ps.append({"pos": pl["pos"], "bytes": pl["bytes"], "crystals": pl["crystals"], "items": pl["items"], "skip": pl["skip"]})
 	return {"phase": phase, "cur": cur, "round": round_n, "rounds": rounds, "players": ps, "crystal": crystal_at,
 		"dialog": {"head": dlg.get("head", ""), "opts": dlg.get("opts", []).size(), "right": dlg.get("right", -1), "bot": dlg.get("bot", false), "mine": _my_dlg()}, "myroll": _my_roll(), "names": players.map(func(x): return x["name"]), "bytes": players.map(func(x): return x["bytes"]),
-		"mini": {"kind": mini.get("kind", ""), "right": mini.get("right", -1), "pick": mini.get("pick", -1)}, "place": placings.find(my) + 1, "net": net, "my": my, "seq": seen_seq if net == "guest" else net_seq}
+		"mini": {"kind": mini.get("kind", ""), "right": mini.get("right", -1), "pick": mini.get("pick", -1)}, "event": round_ev, "auction": not auc.is_empty(), "place": placings.find(my) + 1, "net": net, "my": my, "seq": seen_seq if net == "guest" else net_seq}
 
 # ---------- рисование ----------
 
@@ -1045,9 +1182,14 @@ func _draw_panel() -> void:
 			var it := _tex("kp_item%d" % ["dice2", "firewall", "antivirus", "link"].find(pl["items"][j]))
 			if it:
 				draw_texture_rect(it, Rect2(r.position + Vector2(270 + (j % 3) * 28, 18), Vector2(26, 26)), false)
-	text("Кристалл — %d байтов · Старт +%d" % [CRYSTAL, PASS_START], Vector2(x + 180, 572), 14, MUTED, false)
+	text("Кристалл — %d байтов · Старт +%d" % [_crystal_price(), PASS_START], Vector2(x + 180, 572), 14, MUTED, false)
 	if p()["items"].size() and _my_roll():
 		text("D — двойной кубик · L — ссылка к кристаллу", Vector2(x + 180, 596), 14, Color("7df9ff"), false)
+	if round_ev != "":
+		# Событие раунда видно всё время, пока действует.
+		rr(Rect2(x, 612, 360, 68), Color(0.2, 0.1, 0.32, 0.94), 14, Color("c08bff"), 2)
+		text("СОБЫТИЕ: " + KP.event_name(round_ev).to_upper(), Vector2(x + 180, 634), 15, Color("c08bff"))
+		text(_event_text(true), Vector2(x + 180, 660), 14, INK, false)
 
 func _opt_rect(i: int, _n: int) -> Rect2:
 	return opt_rects[i] if i < opt_rects.size() else Rect2()
@@ -1102,10 +1244,19 @@ func _draw_mini() -> void:
 	var r := Rect2(200, 110, 880, 560)
 	rr(r, Color("16203a"), 26, Color("7df9ff"), 3)
 	text("МИНИ-ИГРА · РАУНД %d" % round_n, Vector2(640, 150), 18, Color("7df9ff"))
-	var y := 200.0
+	var code: Array = mini.get("code", [])
+	var y := 200.0 if code.is_empty() else 184.0
 	for w in _wrap(str(mini["q"]), 56):
 		text(w, Vector2(640, y), 24, INK)
 		y += 32.0
+	if code.size():
+		# Программа — слева, с отступами, как в редакторе.
+		var cr := Rect2(420, y - 14, 440, code.size() * 24 + 12)
+		rr(cr, Color("0b1020"), 10, Color(1, 1, 1, 0.16), 1)
+		for i in code.size():
+			var ln := str(code[i])
+			var body := ln.lstrip(" ")
+			draw_string(font, Vector2(cr.position.x + 18 + (ln.length() - body.length()) * 7, cr.position.y + 24 + i * 24), body, HORIZONTAL_ALIGNMENT_LEFT, cr.size.x - 30, 19, Color("b8f7c8"))
 	var left := maxf(0.0, float(mini["limit"]) - float(mini["t"]))
 	rr(Rect2(300, 320, 680, 16), Color("0d1226"), 8)
 	rr(Rect2(300, 320, 680 * left / float(mini["limit"]), 16), Color("ffd34d") if left > 3.0 else Color("ff7a7a"), 8)
@@ -1118,7 +1269,8 @@ func _draw_mini() -> void:
 			col = Color("1f7a5a")
 		rr(orr, col, 16, Color(1, 1, 1, 0.22), 2)
 		text("%d" % (i + 1), orr.position + Vector2(30, 38), 22, GOLD)
-		text(str(mini["opts"][i]), orr.get_center() + Vector2(10, 0), 26, INK)
+		var o := str(mini["opts"][i])
+		text(o, orr.get_center() + Vector2(10, 0), 26 if o.length() <= 15 else (21 if o.length() <= 20 else 18), INK)
 	var others := [0, 1, 2, 3]
 	others.erase(my)
 	for j in 3:
@@ -1132,7 +1284,7 @@ func _draw_mini() -> void:
 	if phase == "mini_res":
 		text("Награда: " + (", ".join(mini.get("result", [])) if mini.get("result", []).size() else "никто не успел"), Vector2(640, 640), 20, GOLD)
 	else:
-		text("Быстрее всех и верно — +6 байтов. Клавиши 1–4 или щелчок.", Vector2(640, 640), 16, MUTED, false)
+		text("Быстрее всех и верно — +%s. Клавиши 1–4 или щелчок." % _bt(_reward(6)), Vector2(640, 640), 16, MUTED, false)
 
 func _overlay() -> void:
 	if state == "over" and won and placings.size() == 4:
