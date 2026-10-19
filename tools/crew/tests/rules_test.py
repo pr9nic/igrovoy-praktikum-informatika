@@ -73,8 +73,11 @@ check('вопросы: один верный и два разных неверн
 g, room, ps = new(8)
 try: g.join('8 «А»', 'Одно', 100); check('имя из одного слова не принимается', False)
 except C.Refused: check('имя из одного слова не принимается', True)
-again = g.join('8 «А»', 'ученик  номера', 101)[1]
-check('тот же ученик возвращается на своё место с новым ключом', again['id'] == ps[0]['id'] and len(room['players']) == 8)
+try: g.join('8 «А»', 'ученик  номера', 101); check('чужой по имени не займёт место того, кто на связи', False)
+except C.Refused as e: check('чужой по имени не займёт место того, кто на связи', e.code == 409)
+old_token = ps[0]['token']; again = g.join('8 «А»', 'ученик  номера', 101, old_token)[1]
+check('тот же ученик (с ключом своей вкладки) возвращается на своё место с новым ключом', again['id'] == ps[0]['id'] and again['token'] != old_token and len(room['players']) == 8)
+check('пересел за другой компьютер: через 10 секунд место отдаётся и без ключа', g.join('8 «А»', 'ученик  номера', 112)[1]['id'] == ps[0]['id'])
 g.rooms['8 «А»']['settings']['minPlayers'] = 4
 g.start(room, 100)
 imps = [p for p in ps if p['role'] == 'imp']; crew = [p for p in ps if p['role'] == 'crew']
@@ -291,4 +294,32 @@ for p in ps: p['seen'] = 226
 g.tick(room, 228); check('новый раунд после итогов тоже запускается голосованием', room['phase'] == 'play' and room['round'] == 2)
 room['settings']['voteStart'] = False; room['phase'] = 'lobby'; g.act(room, ps[0], {'t': 'ready'}, 230)
 check('учитель может выключить голосование: тогда старт только с пульта', room['start_at'] == 0 and not g.view(room, ps[0], 230, 0)['ready']['on'])
+# --- счёт урока, пауза, аварии, кривые запросы
+g, room, ps = new(6); g.start(room, 100)
+for p in ps: p['right'], p['wrong'] = 5, 1
+g.finish(room, 'crew', 'тест.', 110); before = {m['name']: m['right'] for m in g.marks(room, [4, 8, 12])}
+g.command(room, 'stop', {}, 111); after = {m['name']: m['right'] for m in g.marks(room, [4, 8, 12])}
+check('«Стоп» после конца раунда не засчитывает ответы второй раз', before == after and set(after.values()) == {5}, (before, after))
+for p in ps[1:]: p['seen'] = 200
+g.start(room, 200); check('кто не на связи, в раунд не идёт', ps[0]['id'] not in room['players'])
+m0 = next((m for m in g.marks(room, [4, 8, 12]) if m['name'] == ps[0]['name']), None)
+check('…но его счёт урока остаётся в отметках', m0 and m0['right'] == 5 and m0['rounds'] == 1, m0)
+g.finish(room, 'crew', 'тест.', 210); back = g.join('8 «А»', ps[0]['name'], 211)[1]
+check('вернулся после раунда без него — счёт урока на месте', back['all_right'] == 5 and back['rounds'] == 1 and sum(1 for m in g.marks(room, [4, 8, 12]) if m['name'] == ps[0]['name']) == 1, back['all_right'])
+g, room, ps = new(6); g.start(room, 100); g.command(room, 'pause', {}, 101); g.command(room, 'win', {'side': 'imp'}, 102)
+g, room, ps = new(6); g.start(room, 100); g.command(room, 'pause', {}, 101)
+for p in ps:
+    if p['role'] == 'imp': g.command(room, 'out', {'id': p['id']}, 102)
+check('раунд закончился на паузе — пауза снята, новый раунд можно начать', room['phase'] == 'end' and not room['paused'], (room['phase'], room['paused']))
+g, room, ps = new(6); g.start(room, 100); crew = [p for p in ps if p['role'] == 'crew']; c = crew[0]
+g.sabotage(room, 'reactor', 140); rx, ry, _ = CONS[0]; c['x'], c['y'] = rx + 0.5, ry + 0.5; g.act(room, c, {'t': 'use'}, 141); stale = c['quiz']
+g.end_sabotage(room, 150, 'Реактор починен.'); g.sabotage(room, 'reactor', 200); c['quiz'] = stale; g.act(room, c, right(stale), 201)
+check('задание с прошлой аварии новую не чинит', room['sabotage'] and 0 not in room['sabotage']['fixed'], room['sabotage'])
+cam = ST['cams']; d = crew[1]; d['alive'] = False; d['x'], d['y'] = cam['x'] + 0.5, cam['y'] + 0.5; g.act(room, d, {'t': 'cams', 'on': True}, 202)
+check('отключённый игрок не включает камеры', not d['cams'])
+check('кривые id и класс в запросе — 401, а не ошибка сервера', all(refused(lambda a=a: g.who(*a)) for a in [('8 «А»', [1], 'x'), (['8 «А»'], 1, 'x'), ({}, 1, 'x')]))
+g, room, ps = new(6); g.start(room, 100)
+for p in ps: p['right'] = 9
+g.finish(room, 'crew', 'тест.', 110); room2 = g.room('8 «А»', 110 + C.IDLE + 1)
+check('через два часа без игроков комната начинается заново: прошлый урок не идёт в отметки', room2 is not room and room2['players'] == {} and g.marks(room2, [4, 8, 12]) == [])
 print('FAILED %d' % bad if bad else 'ALL OK'); sys.exit(bad)

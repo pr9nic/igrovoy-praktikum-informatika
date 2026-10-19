@@ -91,6 +91,8 @@ MAPS = list(WORLDS) + ['random']
 COLORS = ['#ff5a5a', '#4aa8ff', '#4ae08a', '#ffd34d', '#c98bff', '#ff9a3a', '#3ad6d6', '#ff7ab8', '#a5e04a', '#8f9bff', '#e0e0e0', '#b08a5a']
 BAD = ['дурак', 'дура', 'идиот', 'тупой', 'тупая', 'лох', 'урод', 'дебил', 'козёл', 'козел', 'сволоч', 'заткн', 'сука', 'бля', 'хер', 'хуй', 'пизд', 'еба', 'ёба', 'жоп', 'говн', 'мраз']
 DEFAULTS = {'map': 'station', 'imposters': 0, 'tasks': 5, 'meeting': 75, 'cooldown': 25, 'infect': 10, 'reveal': True, 'chat': True, 'minPlayers': 4, 'sabotage': True, 'emergency': 1, 'sabotageTime': 50, 'roles': True, 'voteStart': True}
+HOLD = 8                 # столько секунд место ученика на связи нельзя занять без ключа его вкладки
+IDLE = 2 * 3600          # комната, где два часа никого нет, начинается заново: счёт урока не переходит на следующий
 LIMITS = {'imposters': (0, 6), 'tasks': (3, 8), 'meeting': (30, 180), 'cooldown': (10, 60), 'infect': (5, 20), 'minPlayers': (3, 10), 'emergency': (0, 3), 'sabotageTime': (30, 90)}
 
 
@@ -255,18 +257,21 @@ class Game:
 
     # ---------- комнаты и игроки ----------
 
-    def room(self, class_name):
+    def room(self, class_name, now=None):
         m = CLASS.fullmatch(str(class_name or ''))
         if not m or not 6 <= int(m.group(1)) <= 11:
             raise Refused('Выберите свой класс.')
+        old = self.rooms.get(class_name)
+        if old and now is not None and old['players'] and all(now - p['seen'] > IDLE for p in old['players'].values()):
+            del self.rooms[class_name]
         if class_name not in self.rooms:
             self.rooms[class_name] = {'name': class_name, 'grade': int(m.group(1)), 'phase': 'lobby', 'players': {}, 'chat': [], 'chat_id': 0, 'round': 0,
                                       'settings': dict(DEFAULTS), 'map': 'station', 'quiz_n': 0, 'bodies': [], 'sabotage': None, 'meeting': None, 'pulses': [], 'winner': '', 'why': '', 'shown': 0, 'next_id': 1,
-                                      'sabotage_at': 0, 'used_q': set(), 'paused': 0, 'locked': False, 'deleted': [], 'wipe': 0, 'ready': set(), 'start_at': 0, 'imps': [], 'winners': []}
+                                      'sabotage_at': 0, 'used_q': set(), 'paused': 0, 'locked': False, 'deleted': [], 'wipe': 0, 'ready': set(), 'start_at': 0, 'imps': [], 'winners': [], 'gone': {}}
         return self.rooms[class_name]
 
-    def join(self, class_name, name, now):
-        room = self.room(class_name)
+    def join(self, class_name, name, now, token=None):
+        room = self.room(class_name, now)
         name = re.sub(r'\s+', ' ', str(name or '').strip())
         if not 5 <= len(name) <= 80 or ' ' not in name or any(ord(c) < 32 for c in name):
             raise Refused('Укажите фамилию и имя.')
@@ -274,6 +279,9 @@ class Game:
         for p in room['players'].values():
             if p['key'] == key:
                 # Тот же ученик вернулся (обновил страницу, пересел): отдаём его место с новым ключом.
+                # Пока прежняя вкладка на связи, место отдаём только с её ключом — иначе одноклассник займёт его, просто набрав имя.
+                if now - p['seen'] < HOLD and not secrets.compare_digest(p['token'].encode(), str(token or '').encode()):
+                    raise Refused('Этот игрок уже на станции. Если это вы на другом компьютере — закройте старую вкладку и войдите через 10 секунд.', 409)
                 p['token'] = secrets.token_urlsafe(12)
                 p['seen'] = now
                 return room, p
@@ -288,11 +296,14 @@ class Game:
         p = {'id': pid, 'token': secrets.token_urlsafe(12), 'name': name, 'key': key, 'color': COLORS[(pid - 1) % len(COLORS)], 'x': WORLDS[room['map']]['table'][0], 'y': WORLDS[room['map']]['table'][1] + 2, 'seen': now,
              'alive': True, 'role': 'crew', 'tasks': [], 'done': [], 'quiz': None, 'lock': 0, 'pulse_at': 0, 'infected_at': 0, 'last': '', 'emergency': 1,
              'right': 0, 'wrong': 0, 'said': 0, 'wins': 0, 'score': 0, 'muted': False, 'job': '', 'cams': False, 'all_right': 0, 'all_wrong': 0, 'rounds': 0}
+        p.update(room['gone'].pop(key, {}))       # вернулся после раунда без него: счёт урока на месте
         room['players'][pid] = p
         self.say(room, None, f'{name} на борту.', 'sys', now)
         return room, p
 
     def who(self, class_name, pid, token):
+        if not isinstance(class_name, str) or type(pid) is not int:
+            raise Refused('Связь со станцией потеряна. Войдите заново.', 401)
         room = self.rooms.get(class_name)
         p = room and room['players'].get(pid)
         if not p or not secrets.compare_digest(p['token'].encode(), str(token or '').encode()):
@@ -312,7 +323,8 @@ class Game:
         if len(players) < s['minPlayers']:
             raise Refused(f'Для раунда нужно не меньше {s["minPlayers"]} игроков на связи.')
         for pid in [pid for pid, p in room['players'].items() if p not in players]:
-            del room['players'][pid]
+            p = room['players'].pop(pid)          # кто не на связи, в раунд не идёт; счёт урока ждёт его возвращения
+            room['gone'][p['key']] = {k: p[k] for k in ('name', 'all_right', 'all_wrong', 'rounds', 'wins', 'score')}
         count = s['imposters'] or (1 if len(players) < 7 else 2 if len(players) < 13 else 3)
         count = max(1, min(count, (len(players) - 1) // 2))
         imps = set(p['id'] for p in self.rnd.sample(players, count))
@@ -362,15 +374,16 @@ class Game:
         """Предложение отметок за урок: по числу верных ответов и точности. Двоек нет: мало ответов — отметки нет."""
         live = room['phase'] in ('play', 'meeting', 'result')
         out = []
-        for p in room['players'].values():
-            right, wrong = p['all_right'] + (p['right'] if live else 0), p['all_wrong'] + (p['wrong'] if live else 0)
+        for p in list(room['players'].values()) + [dict(g, id=0, right=0, wrong=0, gone=True) for g in room['gone'].values()]:
+            now_in = live and not p.get('gone')   # кто пропускает раунд, у того текущего раунда нет
+            right, wrong = p['all_right'] + (p['right'] if now_in else 0), p['all_wrong'] + (p['wrong'] if now_in else 0)
             acc = round(right / (right + wrong) * 100) if right + wrong else 0
             mark = 5 if right >= need[2] and acc >= 70 else 4 if right >= need[1] and acc >= 50 else 3 if right >= need[0] else 0
-            out.append({'id': p['id'], 'name': p['name'], 'right': right, 'wrong': wrong, 'acc': acc, 'rounds': p['rounds'] + (1 if live else 0), 'wins': p['wins'], 'mark': mark})
+            out.append({'id': p['id'], 'name': p['name'], 'right': right, 'wrong': wrong, 'acc': acc, 'rounds': p['rounds'] + (1 if now_in else 0), 'wins': p['wins'], 'mark': mark})
         return sorted(out, key=lambda m: m['name'])
 
     def finish(self, room, winner, why, now):
-        room.update(phase='end', winner=winner, why=why, sabotage=None, meeting=None, ended=now)
+        room.update(phase='end', winner=winner, why=why, sabotage=None, meeting=None, ended=now, paused=0)   # раунд мог закончиться на паузе
         for p in room['players'].values():
             p['quiz'] = None
             won = (p['role'] == 'imp') == (winner == 'imp')
@@ -588,7 +601,7 @@ class Game:
                             p['last'] = 'починено без задания'
                             self.fixed(room, i, now)
                         else:
-                            p['quiz'] = dict(self.question(room), kind='fix', at=i)
+                            p['quiz'] = dict(self.question(room), kind='fix', at=i, sab=room['sabotage']['t'])
                         return
             for i in p['tasks']:
                 tx, ty = wd['terminals'][i]
@@ -604,7 +617,7 @@ class Game:
                 return
             p['right'] += 1
             p['last_answer'] = {'ok': True, 't': now}
-            if q['kind'] == 'fix' and room['sabotage'] and p['role'] == 'crew':
+            if q['kind'] == 'fix' and room['sabotage'] and room['sabotage']['t'] == q.get('sab') and p['role'] == 'crew':   # задание с прошлой аварии новую не чинит
                 self.fixed(room, q['at'], now)
             elif q['kind'] == 'task':
                 p['done'].append(q['at'])          # у вредителя задания «выполняются» так же, но в общий счёт не идут
@@ -630,7 +643,7 @@ class Game:
                 p['last'] = 'вылечен: ' + ', '.join(o['name'] for o in cured) if cured else 'рядом заражённых не было'
         elif kind == 'cams':
             cam = wd['cams']
-            p['cams'] = bool(a.get('on')) and self.near(p, cam['x'] + 0.5, cam['y'] + 0.5, 2.0) and not p['quiz']
+            p['cams'] = bool(a.get('on')) and p['alive'] and self.near(p, cam['x'] + 0.5, cam['y'] + 0.5, 2.0) and not p['quiz']
         elif kind == 'sabotage' and s['sabotage'] and p['alive'] and p['role'] == 'imp' and not room['sabotage'] and now >= room['sabotage_at']:
             self.sabotage(room, a.get('kind'), now)
         elif kind == 'report' and p['alive']:
@@ -719,7 +732,8 @@ class Game:
         if action == 'start' and phase in ('lobby', 'end'):
             self.start(room, now, data.get('imps') if isinstance(data.get('imps'), list) else None)
         elif action == 'stop' and phase != 'lobby':
-            self.bank_stats(room)
+            if phase != 'end':                    # после конца раунда ответы уже в счёте урока
+                self.bank_stats(room)
             for p in players.values():
                 p.update(right=0, wrong=0, tasks=[], done=[], quiz=None, cams=False)
             room.update(phase='lobby', meeting=None, sabotage=None, bodies=[], paused=0)
@@ -820,7 +834,7 @@ def install_crew(app, journal_db=None, after_journal_change=None):
         try:
             data = body()
             with game.lock:
-                room, p = game.join(data.get('className'), data.get('name'), time.time())
+                room, p = game.join(data.get('className'), data.get('name'), time.time(), data.get('token'))
                 return jsonify(status='ok', id=p['id'], token=p['token'], color=p['color'], worlds=WORLDS, world=room['map'], teacher=is_teacher())
         except Refused as error:
             return fail(error)
@@ -865,7 +879,7 @@ def install_crew(app, journal_db=None, after_journal_change=None):
                 if action == 'clearall':
                     game.rooms.clear()
                     return jsonify(game.overview(now))
-                room = game.room(data.get('className'))
+                room = game.room(data.get('className'), now)
                 if action == 'marks':
                     # Отметки за урок. Без apply — только предложение; с apply учитель записывает их в журнал.
                     need = data.get('need') if isinstance(data.get('need'), list) and len(data['need']) == 3 and all(type(n) is int and 1 <= n <= 200 for n in data['need']) else [4, 8, 12]

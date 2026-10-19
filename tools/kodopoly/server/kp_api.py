@@ -15,6 +15,7 @@ from flask import jsonify, request
 CLASS = re.compile(r'(6|7|8|9|10|11) «[АБВГДЕЖЗИК]»')
 TTL = 3 * 3600      # брошенная партия удаляется через три часа
 GONE = 12           # кто не отвечает 12 секунд, уходит из лобби (до начала партии)
+LOST = 120          # начатая партия, где две минуты никто не на связи, брошена
 SEATS = 4
 
 
@@ -43,7 +44,7 @@ class Tables:
         for t in list(self.tables.values()):
             if not t['started']:
                 self._drop_gone(t, now)
-            if not t['seats'] or now - t['touched'] > TTL:
+            if not t['seats'] or now - t['touched'] > TTL or (t['started'] and all(now - s['seen'] > LOST for s in t['seats'])):
                 self.tables.pop(t['id'], None)
 
     def _drop_gone(self, t, now):
@@ -79,10 +80,9 @@ class Tables:
         return t, self._seat(t, name, now)
 
     def _seat(self, t, name, now):
-        for s in t['seats']:
-            if s['key'] == norm(name):
-                s['seen'] = now
-                return s
+        if any(s['key'] == norm(name) for s in t['seats']):
+            # Своё место вернёт только ключ (он хранится во вкладке); по одному имени чужой ключ не выдаём.
+            raise Refused('Ты уже за этим столом. Если страница закрылась — подожди 15 секунд и войди снова.', 409)
         if t['started']:
             raise Refused('В этом лобби партия уже идёт.', 409)
         if len(t['seats']) >= SEATS:
@@ -98,9 +98,10 @@ class Tables:
         t = self.tables.get(tid) if isinstance(tid, int) else None
         if not t or t['cls'] != class_name:
             raise Refused('Такого лобби уже нет.', 404)
-        self._leave_others(class_name, norm(name), keep=tid)
+        s = self._seat(t, name, now)
+        self._leave_others(class_name, norm(name), keep=tid)   # старое место освобождаем, только когда новое уже занято
         t['touched'] = now
-        return t, self._seat(t, name, now)
+        return t, s
 
     def who(self, tid, token):
         t = self.tables.get(tid) if isinstance(tid, int) else None

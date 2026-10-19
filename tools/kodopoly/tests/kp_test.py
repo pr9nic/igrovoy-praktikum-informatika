@@ -30,4 +30,11 @@ P('leave', table=x['table'], token=x['token']); s = P('state', table=x['table'],
 z = P('join', className=A, name='Третий Друг', table=x['table']).get_json(); check('создатель начинает вдвоём раньше', P('start', table=x['table'], token=y['token']).get_json()['started'])
 T = app.kp_tables; q = P('create', className=A, name='Ушедший Ученик').get_json(); T.tables[q['table']]['seats'][0]['seen'] -= 60
 check('лобби, где никто не отвечает, исчезает из списка', all(t['id'] != q['table'] for t in P('list', className=A).get_json()['tables']))
+# чужое место по имени не выдаётся; отказ не выбрасывает из своего лобби; брошенные партии освобождают место
+r = P('join', className=A, name='хозяин  стола', table=h['table'])
+check('вход с именем игрока за столом — отказ, его ключ не выдаётся', r.status_code == 409 and 'token' not in r.get_json())
+a = P('create', className=A, name='Свой Создатель', title='Моё лобби').get_json(); b = P('join', className=A, name='Друг Вошедший', table=a['table']).get_json()
+check('промах по начатой партии не выбрасывает из своего лобби', P('join', className=A, name='Свой Создатель', table=h['table']).status_code == 409 and P('state', table=a['table'], token=a['token']).get_json()['seat'] == 0)
+for seat in T.tables[h['table']]['seats']: seat['seen'] -= 200
+check('начатая партия, где две минуты никого нет, освобождает место', all(t['id'] != h['table'] for t in P('list', className=A).get_json()['tables']))
 print('ALL OK' if not fails else f'FAILED {fails}'); sys.exit(1 if fails else 0)

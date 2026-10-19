@@ -12,6 +12,7 @@ from flask import jsonify, request
 from portal_security import is_teacher
 
 CLASS = re.compile(r'(\d{1,2}) «[А-ЯЁ]»')
+HOLD = 8      # столько секунд место ученика на связи нельзя занять без ключа его вкладки
 DX, DY = (0, 1, 0, -1), (-1, 0, 1, 0)
 
 
@@ -84,7 +85,7 @@ class Race:
             raise Refused('Выберите свой класс.')
         return self.rooms.setdefault(class_name, {'name': class_name, 'players': {}, 'task': None, 'next': 1, 'task_n': 0})
 
-    def join(self, class_name, name, now):
+    def join(self, class_name, name, now, token=None):
         room = self.room(class_name)
         name = re.sub(r'\s+', ' ', str(name or '').strip())
         if not 5 <= len(name) <= 80 or ' ' not in name or any(ord(c) < 32 for c in name):
@@ -92,6 +93,8 @@ class Race:
         key = name.lower().replace('ё', 'е')
         for p in room['players'].values():
             if p['key'] == key:
+                if now - p['seen'] < HOLD and not secrets.compare_digest(p['token'].encode(), str(token or '').encode()):
+                    raise Refused('Этот участник уже в гонке. Если это вы на другом компьютере — закройте старую вкладку и войдите через 10 секунд.', 409)
                 p['token'], p['seen'] = secrets.token_urlsafe(12), now
                 return p
         if len(room['players']) >= 40:
@@ -102,6 +105,8 @@ class Race:
         return p
 
     def who(self, class_name, pid, token):
+        if not isinstance(class_name, str) or type(pid) is not int:
+            raise Refused('Связь с гонкой потеряна. Войдите заново.', 401)
         room = self.rooms.get(class_name)
         p = room and room['players'].get(pid)
         if not p or not secrets.compare_digest(p['token'].encode(), str(token or '').encode()):
@@ -160,7 +165,7 @@ def install_race(app):
         try:
             data = body()
             with race.lock:
-                p = race.join(data.get('className'), data.get('name'), time.time())
+                p = race.join(data.get('className'), data.get('name'), time.time(), data.get('token'))
                 return jsonify(status='ok', id=p['id'], token=p['token'], teacher=is_teacher())
         except Refused as error:
             return fail(error)

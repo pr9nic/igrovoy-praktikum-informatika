@@ -48,8 +48,10 @@
       e.preventDefault(); const name = slot.querySelector('[data-field=name]').value.trim().replace(/\s+/g, ' ');
       if (name.length < 5 || !name.includes(' ')) { status.textContent = 'Укажи фамилию и имя.'; return; }
       status.textContent = 'Соединяемся со станцией…';
-      try { const d = await call('join', {className: letter.value, name}); me = {id: d.id, token: d.token, className: letter.value, name, color: d.color}; setWorlds(d);
-        try { localStorage.setItem(STORE, JSON.stringify({className: letter.value, name})); } catch {} start(); }
+      // ключ прошлого входа из этой вкладки: после обновления страницы сервер вернёт место, не дожидаясь, пока старая связь пропадёт
+      let prev = null; try { prev = JSON.parse(sessionStorage.getItem('crew-me') || 'null'); } catch {}
+      try { const d = await call('join', {className: letter.value, name, token: prev && prev.className === letter.value && prev.name === name ? prev.token : undefined}); me = {id: d.id, token: d.token, className: letter.value, name, color: d.color}; setWorlds(d);
+        try { localStorage.setItem(STORE, JSON.stringify({className: letter.value, name})); sessionStorage.setItem('crew-me', JSON.stringify({className: letter.value, name, token: d.token})); } catch {} start(); }
       catch (error) { status.textContent = error.message + (error.status === 404 ? ' Сетевая игра ещё не подключена к серверу.' : ''); }
     });
     box.append(form); root.replaceChildren(box);

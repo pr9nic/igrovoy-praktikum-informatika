@@ -29,4 +29,8 @@ check('после времени решения не принимаются, п�
 check('негодное задание от учителя не запускается', refused(lambda: r.start(room, {'map': ['S.', '...'], 'dir': 1, 'minutes': 5}, 600)) and refused(lambda: r.start(room, {'map': ['..G'], 'dir': 1, 'minutes': 5}, 600)) and refused(lambda: r.start(room, {'map': ['S.G'], 'dir': 1, 'minutes': 99}, 600)))
 r.start(room, {'title': 'Новое', 'map': levels[0]['map'], 'dir': 1, 'minutes': 3}, 700); check('новое задание обнуляет таблицу', r.view(room, a, 701, False)['board'] == [] and r.view(room, a, 701, False)['task']['id'] == 2)
 check('чужой ключ не подходит', refused(lambda: r.who('8 «А»', a['id'], 'нет')) and r.who('8 «А»', a['id'], a['token'])[1] is a)
+check('кривые id и класс — 401, а не ошибка сервера', all(refused(lambda x=x: r.who(*x)) for x in [('8 «А»', [1], 'x'), (['8 «А»'], 1, 'x'), ({}, 1, 'x')]))
+check('чужой по имени не займёт место того, кто на связи', refused(lambda: r.join('8 «А»', 'первый  ученик', 101)))
+old_token = a['token']; again = r.join('8 «А»', 'Первый Ученик', 101, old_token)
+check('свой ключ вкладки — место возвращается с новым ключом; через 10 секунд — и без ключа', again is a and a['token'] != old_token and r.join('8 «А»', 'Первый Ученик', 112) is a)
 print('FAILED %d' % bad if bad else 'ALL OK'); sys.exit(bad)
