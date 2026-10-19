@@ -152,9 +152,10 @@
       ref: `n = int(input())\ns = 0\nc = 0\nfor i in range(n):\n    x = int(input())\n    if x % ${k} == 0:\n        s += x\n        c += 1\nif c == 0:\n    print("NO")\nelse:\n    print(s // c)`}; },
   ];
   const PY = () => globalThis.CodeHero || (typeof require === 'function' ? require('../../codehero/core.js') : null);
+  const pyStr = v => Array.isArray(v) ? '[' + v.map(pyStr).join(', ') + ']' : v === true ? 'True' : v === false ? 'False' : v == null ? 'None' : String(v);
   function runPython(code, input) {
     const H = PY(); if (!H) throw new Error('интерпретатор Python не загрузился'); let i = 0; const out = [];
-    const prog = H.parse(String(code)), it = H.run(prog, {input: {builtin: 'input', call: () => { if (i >= input.length) throw new H.PyError('Программа просит больше чисел, чем дано на входе.'); return String(input[i++]); }}, print: {builtin: 'print', call: args => { out.push(args.map(a => typeof a === 'number' ? String(a) : String(a)).join(' ')); return null; }}}, {ops: 200000});
+    const prog = H.parse(String(code)), it = H.run(prog, {input: {builtin: 'input', call: () => { if (i >= input.length) throw new H.PyError('Программа просит больше чисел, чем дано на входе.'); return String(input[i++]); }}, print: {builtin: 'print', call: args => { out.push(args.map(pyStr).join(' ')); return null; }}}, {ops: 200000});
     for (const _ of it) {} return out.join('\n').trim();
   }
   const progTask = (lv, seed) => { const r = rng(seed * 7 + lv.n * 131); if (lv.n === 15) { const kind = tools(r).pick(Object.keys(ROBOT)); return {kind, fields: [0, 1, 2].map(() => ROBOT[kind](r)), text: ROBOT_TASK[kind], ref: ROBOT_TASK[kind][2]}; }

@@ -58,4 +58,30 @@ for (const level of LEVELS) {
   for (const [k, src] of (PARTIAL[level.id] || []).entries()) { const wins = seeds.filter(s => C.simulate(level, src, s).ok).length; info += ` · неполный мозг ${k + 1}: побед ${wins}/40`; if (wins > 2) ok = false; }
   check(`${String(level.id).padStart(2)} ${level.title}`, ok, info);
 }
+// Интерпретатор ведёт себя как настоящий Python: ожидаемый вывод сверен с python3 (длина строк и списков у нас ограничена миллионом).
+const show = v => Array.isArray(v) ? '[' + v.map(show).join(', ') + ']' : v === true ? 'True' : v === false ? 'False' : v == null ? 'None' : String(v);
+const py = code => { const out = []; try { for (const _ of C.run(C.parse(code), {print: {builtin: 'print', call: a => { out.push(a.map(show).join(' ')); return null; }}}, {ops: 20000})) {} } catch (e) { out.push((e instanceof C.PyError ? 'ошибка: ' : 'сбой JS: ') + e.message); } return out.join('\n'); };
+const PY = [
+  ['обмен a, b = b, a', 'a = 1\nb = 2\na, b = b, a\nprint(a, b)', '2 1'],
+  ['обмен соседей в пузырьке', 'a = [3, 1, 2]\nfor j in range(2):\n    if a[j] > a[j + 1]:\n        a[j], a[j + 1] = a[j + 1], a[j]\nprint(a)', '[1, 2, 3]'],
+  ['кортежное присваивание по порядку, распаковка списка', 'i = 0\na = [5, 6]\ni, a[i] = 1, 9\nx, y = [7, 8]\nprint(i, a, x, y)', '1 [5, 9] 7 8'],
+  ['цепочки сравнений', 'd = 3\nprint(1 < d <= 5, 1 == 1 == 1, 5 > d > 4, 1 < 2 > 0)', 'True True False True'],
+  ['в цепочке средний операнд считается один раз, есть короткое замыкание', 'def f():\n    print("f")\n    return 2\nprint(1 < f() < 3)\nprint(5 < 1 < f())', 'f\nTrue\nFalse'],
+  ['присваивание в функции создаёт локальную переменную', 'x = 10\ndef f():\n    x = 5\n    return x\nprint(f(), x)', '5 10'],
+  ['is, is not, not in', 'b = None\na = [1]\nprint(b is None, b is not None, a is a, 3 not in [1, 2], "a" not in "abc")', 'True False True True False'],
+  ['повторение строк и списков', 'print("ха" * 3, 2 * "ab", [0] * 3, [1, 2] * 0, "x" * -1 == "")', 'хахаха abab [0, 0, 0] [] True'],
+  ['//=, %=, /=', 'n = 1234\nn //= 10\nd = 7\nd %= 4\nm = 9\nm /= 2\nprint(n, d, m)', '123 3 4.5'],
+  ['команда после двоеточия в той же строке', 'x = 1\nif x == 1: print("one")\nelse: print("other")\nfor i in range(2): print(i)\nwhile x < 3: x += 1\nprint(x)', 'one\n0\n1\n3'],
+  ['== и in сравнивают списки по значению', 'print([1, [2, 3]] == [1, [2, 3]], [1, 2] != [1, 2], [1] == [2], [1] in [[1], 2])', 'True False False True'],
+  ['sum', 'print(sum([1, 2, 3]))', '6'],
+  ['+= в функции без своей переменной — понятная ошибка', 'kills = 0\ndef fight():\n    kills += 1\nfight()', /^ошибка: Переменная «kills» внутри функции своя, и значения у неё ещё нет/],
+  ['число имён и значений не совпадает', 'a, b = 1, 2, 3', /^ошибка: Слева от = переменных: 2, а значений справа: 3/],
+  ['шаг range не может быть нулём', 'print(range(1, 5, 0))', /^ошибка: .*не может быть нулём/],
+  ['слишком длинная строка — понятная ошибка, а не сбой', 's = "ab" * 1000000', /^ошибка: .*слишком длинная/],
+  ['удвоение строки в цикле — тоже понятная ошибка', 't = "a"\nfor i in range(40):\n    t = t + t', /^ошибка: .*слишком длинная/],
+  ['составная команда после двоеточия', 'x = 1\nif x: if x: pass', /^ошибка: .*перенесите на новую строку с отступом/],
+];
+for (const [name, code, want] of PY) { const got = py(code); check('python: ' + name, want instanceof RegExp ? want.test(got) : got === want, got.replace(/\n/g, ' | ')); }
+{ let r; try { r = C.simulate(LEVELS[0], 'x = hero.hasOwnProperty("gold")', 1); } catch (e) { r = {error: 'сбой JS: ' + e.message}; } check('python: служебные свойства JS у героя не видны', /нет hasOwnProperty/.test(r.error), r.error); }
+check('python: 1 < d <= 5 (уровень 32) и best is None (уровень 29) проходят уровни', [[32, SOL[32].replace('d > 1 and d <= 5', '1 < d <= 5')], [29, SOL[29].replace('best == None', 'best is None')]].every(([id, src]) => src !== SOL[id] && [1, 2, 3].every(s => C.simulate(LEVELS[id - 1], src, s).ok)));
 console.log(bad ? `FAILED ${bad}` : 'ALL OK'); process.exit(bad ? 1 : 0);

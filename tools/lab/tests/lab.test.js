@@ -99,6 +99,23 @@ if (require.main === module) {
     check('почта пакетов: адрес сети сходится с независимым пересчётом (300 вариантов)', !bad, bad); }
   // Поезд массивов: программа, подогнанная под первый состав, не проходит; запрещённые функции отклоняются.
   { const g = G.arrays, l0 = g.LEVELS[0]; check('массивы: подгонка под один состав и sum() не проходят', !g.check(l0, 'print(' + g.LEVELS[0].data((s => () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; })(5 * 37)).a.reduce((x, y) => x + y, 0) + ')').ok && !g.check(l0, 'print(sum(a))').ok); }
+  // Поезд массивов: запреты — по смыслу программы, а не по буквам: for y in a, флаг is_sorted и обмен через запятую проходят; in через другое имя, not in, sort, sorted, reverse — нет.
+  { const g = G.arrays, lv = t => g.LEVELS.find(l => l.title === t), swap = 'n = len(a)\nfor i in range(n - 1):\n    for j in range(n - 1 - i):\n        if a[j] > a[j + 1]:\n            a[j], a[j + 1] = a[j + 1], a[j]\nprint(a)';
+    const good = [['Есть ли вагон?', 'f = "NO"\nfor y in a:\n    if y == x:\n        f = "YES"\nprint(f)'], ['Сортировка вагонов', swap], ['Сортировка вагонов', 'n = len(a)\nis_sorted = False\nwhile not is_sorted:\n    is_sorted = True\n    for j in range(n - 1):\n        if a[j] > a[j + 1]:\n            a[j], a[j + 1] = a[j + 1], a[j]\n            is_sorted = False\nprint(a)'],
+      ['Поезд задом наперёд', 'n = len(a)\nfor i in range(n // 2):\n    a[i], a[n - 1 - i] = a[n - 1 - i], a[i]\nprint(a)'], ['Самый тяжёлый', 'max = 0\nfor i in range(len(a)):\n    if a[i] > a[max]:\n        max = i\nprint(a[max], max)']];
+    const banned = [['Есть ли вагон?', 'b = a\nif x in b:\n    print("YES")\nelse:\n    print("NO")'], ['Есть ли вагон?', 'if x not in a:\n    print("NO")\nelse:\n    print("YES")'], ['Сортировка вагонов', 'a.sort()\nprint(a)'], ['Сортировка вагонов', 'print(sorted(a))'],
+      ['Поезд задом наперёд', 'a.reverse()\nprint(a)'], ['Поезд задом наперёд', 'print(list(reversed(a)))'], ['Сумма груза', 's = sum(a)\nprint(s)']];
+    const miss = [...good.filter(([t, c]) => !g.check(lv(t), c).ok), ...banned.filter(([t, c]) => !/нельзя использовать/.test(g.check(lv(t), c).msg))];
+    check('массивы: запреты по смыслу — for y in a, is_sorted и обмен a[j], a[j + 1] = … проходят; in через другое имя, not in, sort, sorted, reverse — нет', !miss.length, miss.map(x => `${x[0]}: ${x[1].split('\n').slice(-2).join(' / ')}`).join('; ')); }
+  // ОГЭ-арена, задание 16: print выводит значения как Python; решение через список и sum() засчитывается.
+  { const g = G.oge, lv = g.LEVELS.find(l => l.n === 16); let s = 1; while (!g.progTask(lv, s).text.includes('сумму всех чисел')) s++;
+    const k = +g.progTask(lv, s).text.match(/кратных (\d+)/)[1], code = `a = []\nx = int(input())\nwhile x != 0:\n    if x % ${k} == 0:\n        a.append(x)\n    x = int(input())\nprint(sum(a))`, out = g.runPython('print(True, None, [1, 2], 7)', []);
+    check('ОГЭ-арена: print(True, None, [1, 2], 7) даёт «True None [1, 2] 7», как Python; задание 16 через список и sum() засчитано', out === 'True None [1, 2] 7' && g.check(lv, {seed: s, code}).stars === 3, out); }
+  // ЕГЭ-арена, задание 15: ответ — честный: НОК(p, q) для наибольшего A (даже если он больше 300) и min(p, q) для наименьшего; 100 вариантов.
+  { const g = G.ege, lv = g.LEVELS.find(l => l.n === 15), gcd = (a, b) => b ? gcd(b, a % b) : a; let bad = '', big = 0;
+    for (let s = 1; s <= 100 && !bad; s++) for (const p of g.problems(lv, s)) { const [u, v] = [...p.text.matchAll(/ДЕЛ\(x, (\d+)\)/g)].map(m => +m[1]), max = /наибольшего/.test(p.text), want = max ? u / gcd(u, v) * v : Math.min(u, v);
+      if (p.answer !== want) bad = `вариант ${s}: ответ ${p.answer}, а верно ${want}`; if (max && want > 300) big++; }
+    check('ЕГЭ-арена: задание 15 — ответ совпадает с НОК(p, q) или min(p, q) на 100 вариантах, в том числе с ответом больше 300', !bad && big > 0, bad || `ответов больше 300: ${big}`); }
   // ЕГЭ-арена: рекурсия сходится с независимым пересчётом; ответы всех заданий — числа или строки, а не undefined.
   { const g = G.ege; let bad = '';
     for (const l of g.LEVELS) for (let s = 1; s <= 120 && !bad; s++) for (const p of g.problems(l, s)) if (p.answer === undefined || p.answer === null || p.answer === '' || (typeof p.answer === 'number' && !Number.isFinite(p.answer))) bad = `задание ${l.n}, вариант ${s}`;
