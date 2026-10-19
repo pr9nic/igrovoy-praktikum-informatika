@@ -6,6 +6,8 @@ pass=0; fail=0; report=()
 run() { local name=$1; shift; if out=$("$@" 2>&1 | tail -3); then if grep -q "ALL OK" <<<"$out"; then pass=$((pass+1)); report+=("✅ $name"); return; fi; fi; fail=$((fail+1)); report+=("❌ $name: $(tail -1 <<<"$out")"); }
 run "Лаборатория (логика)" node tools/lab/tests/lab.test.js
 run "Машина Тьюринга" node tools/lab/tests/turing.test.js
+run "Сортировочная горка" node tools/lab/tests/sortyard.test.js
+run "Шифровальня" node tools/lab/tests/cipher.test.js
 run "Герой кода: уровни и решения" node tools/codehero/tests/levels.test.js
 run "Практикум: сервер" python3 tools/practicum/tests/practicum_api_test.py
 run "Битва класса: сервер" python3 tools/battle/tests/battle_test.py
