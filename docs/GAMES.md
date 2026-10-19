@@ -70,7 +70,7 @@ typeLabel=Учебная игра и game=true. В Босовой игра по�
 (только по просьбе учителя).
 
 JSON: общий паспорт, `story`, `grading` (three/four/five, % звёзд мира),
-необязательный `classLetters`, `worlds` 1–8. Мир: id, title, description,
+необязательный `classLetters`, `worlds` 1–12. Мир: id, title, description,
 type, `lang` py/ru, необязательный topicId из curriculum.topicIds, levels 3–10.
 Уровень: id, title, prompt, hint, explanation и поля механики:
 
@@ -82,7 +82,8 @@ type, `lang` py/ru, необязательный topicId из curriculum.topicId
 - binary: mode dec2bin/bin2dec/base2bin/bin2base/sum, bits, count, min, max,
   base 8/16, weights, readout. Числа случайные.
 - calc: count и tasks: text с {переменными}, vars — списки значений,
-  answer — выражение, unit, tip. Ответ обязан быть целым при любых значениях.
+  answer — выражение, unit, tip. Ответ обязан быть ровно целым при любых значениях.
+  Имена переменных — латиницей, промежуточные значения не больше 2⁵³ (точность браузера).
 - logic: inputs, nodes (id, in, необязательные gate и row), target, gates1, gates2.
 - pixel: rows из 0/1, show bin/hex/dec, weights.
 - graph: nodes (id, x, y в процентах), edges [a, b, длина], from, to.

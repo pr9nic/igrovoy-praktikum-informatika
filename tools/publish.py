@@ -13,7 +13,7 @@ EXTENSIONS={'.pdf','.docx','.xlsx','.ods','.odt','.pptx','.txt','.csv','.py','.s
 def require(value,message):
     if not value:raise ValueError(message)
 def text(value,label,limit=3000):
-    require(isinstance(value,str) and 0<len(value.strip())<=limit,label+' — обязательная строка допустимой длины')
+    require(isinstance(value,str) and value.strip() and len(value)<=limit,label+' — обязательная строка допустимой длины')
     require(not any(ord(c)<32 and c not in '\n\t' for c in value),label+' содержит управляющие символы')
 def strings(value,label,minimum=0,maximum=20):
     require(isinstance(value,list) and minimum<=len(value)<=maximum,label+' — список неверной длины')
@@ -150,7 +150,7 @@ def render(data,attachments,output):
     for index,(a,file) in enumerate(attachments):
         name=f'file-{index+1}'+file.suffix.lower();dest=output/'assets'/name;dest.parent.mkdir(exist_ok=True);shutil.copyfile(file,dest)
         public['attachments'].append({'url':'assets/'+name,'label':a['label']})
-    encoded=json.dumps(public,ensure_ascii=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
+    encoded=json.dumps(public,ensure_ascii=False,allow_nan=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
     page='''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>__TITLE__ · Школа 4</title><link rel="icon" href="/portal/favicon.svg"><link rel="stylesheet" href="/portal/sections.css"><link rel="stylesheet" href="/portal/assignment.css">
 <script defer src="/portal/sections.js"></script><script defer src="/portal/shared.js"></script><script defer src="/portal/assignment.js"></script></head>
@@ -210,7 +210,7 @@ def render(data,attachments,output):
         engine=Path(__file__).with_name('practicum');pr=public['practicum']
         pr['version']=hashlib.sha256((ROOT/'godot'/pr['godotProject']/'export'/'index.pck').read_bytes()).hexdigest()[:10];pr['gameUrl']='/courses/'+pr['godotHost']+'/game/index.html'
         pr['artVersion']=hashlib.sha256(b''.join(f.read_bytes() for f in sorted((engine/'art').glob('cover_*.webp'))+sorted((engine/'art').glob('link_*.webp'))+sorted((Path(__file__).with_name('lab')/'art').glob('cover_*.webp')))).hexdigest()[:8]
-        encoded=json.dumps(public,ensure_ascii=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
+        encoded=json.dumps(public,ensure_ascii=False,allow_nan=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
         names=['battle.js','battle_play.js','battle_teach.js','practicum.js','practicum.css','battle.css']
         version=hashlib.sha256(b''.join((engine/n).read_bytes() for n in names)).hexdigest()[:10]
         for name in names:shutil.copyfile(engine/name,output/name)
@@ -242,9 +242,11 @@ def render(data,attachments,output):
             (output/'art').mkdir(exist_ok=True)
             for f in sorted((engine/'art').glob('*.png'))+sorted((engine/'art').glob('*.jpg')):shutil.copyfile(f,output/'art'/f.name)
         page=page.replace('/portal/assignment.js','trainer.js?v='+version).replace('<link rel="stylesheet" href="/portal/assignment.css">','<link rel="stylesheet" href="/portal/game.css?v=20261006"><link rel="stylesheet" href="trainer.css?v='+version+'">').replace('class="assignment-wrap" id="assignment"','class="game-wrap trainer" id="trainer"')
-    (output/'index.html').write_text(page.replace('__TITLE__',html.escape(data['title'])).replace('__GRADE__',str(data['grade'])).replace('__DATA__',encoded))
+    # Одна замена за проход: «__DATA__» в названии не должен раскрыться второй раз.
+    values={'__TITLE__':html.escape(data['title']),'__GRADE__':str(data['grade']),'__DATA__':encoded}
+    (output/'index.html').write_text(re.sub('__TITLE__|__GRADE__|__DATA__',lambda m:values[m.group()],page))
     notes=''.join('<li>'+html.escape(n)+'</li>' for n in data.get('teacherNotes',[]))
-    for i,q in enumerate(data.get('questions',[])):
+    for i,q in enumerate(data.get('questions',[]) if data['kind']=='test' else []):
         ans=q['answer']
         if q['type']=='single':ans=q['options'][ans]
         elif q['type']=='multi':ans='; '.join(q['options'][x] for x in ans)
@@ -253,7 +255,7 @@ def render(data,attachments,output):
         c=data.get('curriculum',{});keys=validate_trainer(data,set(c.get('topicIds',[c['topicId']] if c else [])))
         for w in data['worlds']:
             for l in w['levels']:notes+='<li><strong>'+html.escape(w['title']+' · '+l['title'])+'</strong><pre>'+html.escape(keys[l['id']])+'</pre><p>'+html.escape(l['explanation'])+'</p></li>'
-    for m in data.get('missions',[]):notes+='<li><strong>'+html.escape(m['title'])+'</strong><p>'+html.escape(m['explanation'])+'</p></li>'
+    for m in data.get('missions',[]) if data['kind']=='game' else []:notes+='<li><strong>'+html.escape(m['title'])+'</strong><p>'+html.escape(m['explanation'])+'</p></li>'
     (output/'teacher_key.html').write_text('<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/portal/assignment.css">'+('<style>ol li{white-space:pre-wrap;font-family:ui-monospace,"DejaVu Sans Mono",monospace;font-size:14px;margin-bottom:14px}</style>' if data.get('gameMode')=='codehero' else '')+'<title>Ключ учителя</title><body><main class="assignment-wrap"><a href="./">← К заданию</a><h1>'+html.escape(data['title'])+' — ключ учителя</h1><ol>'+notes+'</ol></main></body></html>')
     item={'id':'course-'+data['slug'],'title':data['title'],'desc':data['description'],'url':'/courses/'+data['slug']+'/',
           'classGrade':data['grade'],'classBadge':str(data['grade'])+' класс','subject':data['subject'],'kind':'test' if data['kind']=='test' else 'practice',
@@ -281,43 +283,55 @@ def publish(data,built,item,replace=False):
         target=courses/data['slug'];require(not target.is_symlink(),'Задание не должно быть symlink')
         require(not target.exists() or replace,'Этот slug уже существует. Для намеренного обновления требуется --replace')
         catalog_path=SITE/'portal/catalog.json';original=catalog_path.read_bytes();catalog=json.loads(original)
-        require(isinstance(catalog,list),'Неверный каталог')
+        require(isinstance(catalog,list) and all(isinstance(x,dict) for x in catalog),'Неверный каталог')
         collisions=[x for x in catalog if x.get('id')==item['id'] or x.get('url')==item['url']]
         require(not collisions or replace,'Карточка уже существует')
         require(all(x.get('id')==item['id'] and x.get('url')==item['url'] for x in collisions),'Коллизия ID или URL чужой карточки')
         backup=ROOT/'backups'/(datetime.now().strftime('%Y%m%d-%H%M%S-')+uuid.uuid4().hex[:8]);backup.mkdir(parents=True,mode=0o700)
         (backup/'catalog.json').write_bytes(original)
         if target.exists():shutil.copytree(target,backup/'course')
-        work=Path(tempfile.mkdtemp(prefix='.school4-author-',dir=courses));shutil.copytree(built,work,dirs_exist_ok=True)
-        for p in work.rglob('*'):p.chmod(0o755 if p.is_dir() else 0o644)
-        work.chmod(0o755)
-        require(catalog_path.read_bytes()==original,'Каталог изменился во время публикации. Повторите после проверки')
-        old=None
-        if target.exists():old=courses/('.school4-old-'+uuid.uuid4().hex);target.rename(old)
+        work=Path(tempfile.mkdtemp(prefix='.school4-author-',dir=courses))
         try:
-            work.rename(target)
-            catalog=[x for x in catalog if x.get('id')!=item['id']];catalog.append(item)
-            atomic(catalog_path,json.dumps(catalog,ensure_ascii=False,indent=2)+'\n')
-        except Exception:
-            if target.exists():shutil.move(str(target),str(backup/'failed-new'))
-            if old is not None:old.rename(target)
-            raise
+            shutil.copytree(built,work,dirs_exist_ok=True)
+            for p in work.rglob('*'):p.chmod(0o755 if p.is_dir() else 0o644)
+            work.chmod(0o755)
+            require(catalog_path.read_bytes()==original,'Каталог изменился во время публикации. Повторите после проверки')
+            old=None
+            if target.exists():old=courses/('.school4-old-'+uuid.uuid4().hex);target.rename(old)
+            try:
+                work.rename(target)
+                catalog=[x for x in catalog if x.get('id')!=item['id']];catalog.append(item)
+                atomic(catalog_path,json.dumps(catalog,ensure_ascii=False,indent=2)+'\n')
+            except BaseException:   # и Ctrl+C между переименованиями: старая страница возвращается на место
+                if target.exists():shutil.move(str(target),str(backup/'failed-new'))
+                if old is not None:old.rename(target)
+                raise
+        finally:
+            # Неудачная попытка не оставляет в courses/ копию задания с ключом учителя.
+            if work.exists():shutil.rmtree(work)
         if old is not None:shutil.move(str(old),str(backup/'previous-live'))
         (backup/'receipt.json').write_text(json.dumps({'url':item['url'],'id':item['id'],'catalogBeforeSHA256':hashlib.sha256(original).hexdigest()},indent=2))
         return backup
+def number(s):
+    # NaN, Infinity и 1e999 ломают JSON.parse в браузере.
+    value=float(s);require(math.isfinite(value),'В JSON недопустимое число '+s);return value
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('file',type=Path);parser.add_argument('--publish',action='store_true');parser.add_argument('--replace',action='store_true');args=parser.parse_args()
     source=args.file.resolve();require(source.is_relative_to(ROOT/'drafts') or source.is_relative_to(ROOT/'templates'),'JSON должен находиться в drafts/ или templates/')
-    require(source.stat().st_size<=512*1024,'JSON больше 512 КБ');data=json.loads(source.read_text());attachments=validate(data,source)
+    require(source.stat().st_size<=512*1024,'JSON больше 512 КБ');data=json.loads(source.read_text(),parse_constant=number,parse_float=number);attachments=validate(data,source)
     output=ROOT/'build'/data['slug']
     # Build in a clean private temp; no stale attachments in a republished task.
     with tempfile.TemporaryDirectory(prefix='school4-author-build-') as tmp:
         generated=Path(tmp)/'course';item=render(data,attachments,generated)
         if output.exists():shutil.rmtree(output)
         shutil.copytree(generated,output)
-    result={'validated':True,'build':str(output),'url':'http://portal.school.local'+item['url'],'published':False}
-    if args.publish:result.update(published=True,backup=str(publish(data,output,item,args.replace)))
+        result={'validated':True,'build':str(output),'url':'http://portal.school.local'+item['url'],'published':False}
+        # Публикуется проверенная личная сборка: общий build/SLUG может переписывать параллельный запуск.
+        if args.publish:result.update(published=True,backup=str(publish(data,generated,item,args.replace)))
     print(json.dumps(result,ensure_ascii=False,indent=2))
-if __name__=='__main__':
+def cli():
     try:main()
     except (ValueError,OSError,json.JSONDecodeError) as error:raise SystemExit('Ошибка: '+str(error))
+    # Прочее — обычно поле черновика неверного типа; тип исключения подсказывает, где искать.
+    except Exception as error:raise SystemExit('Ошибка: неверная структура JSON ('+type(error).__name__+': '+str(error)+')')
+if __name__=='__main__':cli()

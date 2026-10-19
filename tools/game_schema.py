@@ -3,7 +3,7 @@ import math,collections
 TYPES={'single','multi','number','sort','order','binary','robot','truth','pixel'}
 def need(ok,msg):
     if not ok:raise ValueError('Игра: '+msg)
-def string(x,label,limit=3000):need(isinstance(x,str) and 0<len(x.strip())<=limit,label+' — обязательный текст')
+def string(x,label,limit=3000):need(isinstance(x,str) and x.strip() and len(x)<=limit,label+' — обязательный текст')
 def strings(xs,label,lo,hi):
     need(isinstance(xs,list) and lo<=len(xs)<=hi,label+' — неверное число элементов')
     for x in xs:string(x,label)
@@ -16,7 +16,7 @@ def validate_game(data):
         need(m['id'] not in ids,'повтор id');ids.add(m['id']);typ=m.get('type');need(typ in TYPES,'неизвестный type');ans=m.get('answer')
         if m.get('code') is not None:string(m['code'],'code')
         if m.get('table') is not None:
-            need(isinstance(m['table'],list) and 2<=len(m['table'])<=12,'table: 2–12 строк')
+            need(isinstance(m['table'],list) and 2<=len(m['table'])<=12 and all(isinstance(r,list) for r in m['table']),'table: 2–12 строк-списков')
             width=len(m['table'][0]);need(2<=width<=6,'table: 2–6 колонок')
             for row in m['table']:strings(row,'table',width,width)
         if typ in ['single','multi']:
@@ -28,7 +28,7 @@ def validate_game(data):
             strings(m.get('groups'),'groups',2,5);strings(m.get('items'),'items',3,10)
             need(isinstance(ans,list) and len(ans)==len(m['items']) and all(type(i) is int and 0<=i<len(m['groups']) for i in ans),'неверное распределение answer')
         elif typ=='order':
-            strings(m.get('items'),'items',3,8);need(isinstance(ans,list) and sorted(ans)==list(range(len(m['items']))) and all(type(i) is int for i in ans),'answer — перестановка индексов')
+            strings(m.get('items'),'items',3,8);need(isinstance(ans,list) and all(type(i) is int for i in ans) and sorted(ans)==list(range(len(m['items']))),'answer — перестановка индексов')
         elif typ=='binary':need(type(m.get('bits')) is int and 2<=m['bits']<=8 and type(ans) is int and 0<=ans<2**m['bits'],'неверный размер/значение двоичного пульта')
         elif typ=='truth':
             need(m.get('operation') in ['and','or','xor','not'],'operation: and/or/xor/not')
