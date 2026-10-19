@@ -33,7 +33,7 @@ jobs:
           unzip -q godot.zip && mkdir -p ~/.local/bin && mv "Godot_v${GODOT}_linux.x86_64" ~/.local/bin/godot && rm godot.zip
       - run: godot --headless --path godot/workshop --import > /dev/null 2>&1 || true
       - run: |
-          for t in solutions cells world arcade; do
+          for t in solutions cells world arcade kodopolia; do
             echo "::group::$t"; timeout 600 godot --headless --path godot/workshop --script res://tests/$t.gd | grep -v "^ok "; s=${PIPESTATUS[0]}; echo "::endgroup::"
             [ "$s" -eq 0 ] || { echo "::error::Godot: tests/$t.gd"; exit 1; }
           done

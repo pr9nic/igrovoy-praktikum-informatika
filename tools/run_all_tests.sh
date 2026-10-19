@@ -21,7 +21,7 @@ run "Тенегрыз: рекорды" python3 tools/typing_escape/tests/typing_
 run "Издатель и шаблоны" bash -c 'python3 tools/check_templates.py && echo ALL OK'
 if command -v godot >/dev/null; then   # Godot без окна: уровни мастерской, генераторы «Клеток памяти», правила аркад
   godot --headless --path godot/workshop --import >/dev/null 2>&1
-  for t in solutions cells world arcade; do run "Godot: $t" timeout 600 godot --headless --path godot/workshop --script res://tests/$t.gd; done
+  for t in solutions cells world arcade kodopolia; do run "Godot: $t" timeout 600 godot --headless --path godot/workshop --script res://tests/$t.gd; done
 else report+=("⏭ Godot: команды godot нет, проверки Godot пропущены"); fi
 if [ "$1" != quick ]; then
   for d in game-8-lab game-9-lab game-8-practicum game-6-typing-escape game-8-crew; do python tools/publish.py drafts/$d.json >/dev/null 2>&1; done
