@@ -121,7 +121,48 @@ if (require.main === module) {
     for (const l of g.LEVELS) for (let s = 1; s <= 120 && !bad; s++) for (const p of g.problems(l, s)) if (p.answer === undefined || p.answer === null || p.answer === '' || (typeof p.answer === 'number' && !Number.isFinite(p.answer))) bad = `задание ${l.n}, вариант ${s}`;
     const l16 = g.LEVELS.find(l => l.n === 16); for (let s = 1; s <= 100 && !bad; s++) { const p = g.problems(l16, s)[0], c = +p.text.match(/n \+ (\d+) при n < (\d+)/)[1], k = +p.text.match(/при n < (\d+)/)[1], N = +p.text.match(/значение F\((\d+)\)/)[1], sum = /делится на 3/.test(p.text), kk = sum ? 2 : +p.text.match(/2·F\(n − (\d+)\)/)[1];
       const F = n => n < k ? n + c : sum ? F(n - 1) + F(n - 2) + (n % 3 === 0 ? 1 : 0) : F(n - 1) + 2 * F(n - kk); if (F(N) !== p.answer) bad = `рекурсия, вариант ${s}`; }
-    check('ЕГЭ-арена: 12 заданий, ответы определены (120 вариантов каждого), рекурсия сходится с независимым пересчётом', !bad && g.LEVELS.length === 12, bad); }
+    check('ЕГЭ-арена: 18 заданий по порядку номеров, ответы определены (120 вариантов каждого), рекурсия сходится с независимым пересчётом', !bad && g.LEVELS.map(l => l.n).join() === '1,2,4,5,6,7,8,11,12,13,14,15,16,19,20,21,22,23', bad || g.LEVELS.map(l => l.n).join()); }
+  // ЕГЭ-арена, задания 1, 2, 19–22: ответ пересчитывается заново по тому, что видит ученик (схема, таблица, текст), на 300 вариантах (по три на вариант).
+  { const g = G.ege, lv = n => g.LEVELS.find(l => l.n === n), perms = a => a.length < 2 ? [a] : a.flatMap((x, i) => perms(a.filter((_, k) => k !== i)).map(p => [x, ...p])), P = {4: perms([0, 1, 2, 3]), 7: perms([0, 1, 2, 3, 4, 5, 6]), 8: perms([0, 1, 2, 3, 4, 5, 6, 7])};
+    // разбор логического выражения с приоритетами ¬, ∧, ∨, →, ≡
+    const logic = src => { const tk = src.match(/[wxyz()¬∧∨→≡]/g), OPS = [['≡', (a, b) => a === b], ['→', (a, b) => !a || b], ['∨', (a, b) => a || b], ['∧', (a, b) => a && b]]; let i = 0;
+      const prim = () => { const c = tk[i++]; if (c === '¬') { const e = prim(); return v => !e(v); } if (c === '(') { const e = lev(0); i++; return e; } return v => v[c]; };
+      const lev = k => { if (k === 4) return prim(); let e = lev(k + 1); while (tk[i] === OPS[k][0]) { i++; const a = e, b = lev(k + 1), fn = OPS[k][1]; e = v => fn(a(v), b(v)); } return e; }; const e = lev(0); return i === tk.length ? e : null; };
+    const side = (a, b, c) => Math.sign((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])), NUM = {один: 1, два: 2, три: 3, четыре: 4, пять: 5};
+    let bad = '', sym = 0, sums = 0, luck = 0, byT = 0;
+    for (let s = 1; s <= 300 && !bad; s++) {
+      // 1: все перестановки пунктов, при которых дороги схемы переходят в дороги таблицы; искомая длина у всех одна; дороги на схеме не пересекаются
+      for (const p of g.problems(lv(1), s)) { const {names, edges, pos} = p.graph, n = names.length, w = p.table.slice(1).map(row => row.slice(1).map(Number)), ask = [...p.text.matchAll(/из пункта ([А-Я]) в пункт ([А-Я])/g)].map(m => [names.indexOf(m[1]), names.indexOf(m[2])]), got = new Set(); let iso = 0;
+        if (w.flat().filter(Boolean).length !== 2 * edges.length || w.some((row, i) => row.some((x, j) => x !== w[j][i]))) { bad = `задание 1, вариант ${s}: таблица не совпадает со схемой по числу дорог`; break; }
+        for (const q of P[n]) if (edges.every(([a, b]) => w[q[a]][q[b]])) { iso++; got.add(ask.reduce((t, [a, b]) => t + w[q[a]][q[b]], 0)); }
+        if (!ask.length || ask.some(([a, b]) => !edges.some(e => e[0] === a && e[1] === b))) bad = `задание 1, вариант ${s}: спрошена дорога, которой нет`;
+        else if (got.size !== 1 || [...got][0] !== p.answer) bad = `задание 1, вариант ${s}: длины ${[...got]} при ответе ${p.answer}`;
+        for (const [a, b] of edges) for (const [c, d] of edges) if (![a, b].some(x => x === c || x === d) && side(pos[a], pos[b], pos[c]) * side(pos[a], pos[b], pos[d]) < 0 && side(pos[c], pos[d], pos[a]) * side(pos[c], pos[d], pos[b]) < 0) bad = `задание 1, вариант ${s}: дороги на схеме пересекаются`;
+        if (iso > 1) sym++; if (ask.length > 1) sums++; }
+      // 2: все 24 расстановки столбцов и все заполнения пустых клеток; подходит ровно одна расстановка — та, что в ответе
+      for (const p of g.problems(lv(2), s)) { const F = logic(p.text.match(/F = (.+?)\. Ниже/)[1]), rows = p.table.slice(1), val = rows[0][4] === '1', holes = [];
+        rows.forEach((row, i) => row.slice(0, 4).forEach((c, k) => { if (c === '') holes.push([i, k]); }));
+        const fit = P[4].filter(q => { for (let b = 0; b < 1 << holes.length; b++) { const full = rows.map(row => row.slice(0, 4).map(Number)); holes.forEach(([i, k], j) => { full[i][k] = b >> j & 1; });
+          if (new Set(full.map(x => x.join(''))).size === 3 && full.every(x => F(Object.fromEntries(x.map((c, k) => ['wxyz'[q[k]], c === 1]))) === val)) return true; } return false; });
+        if (!F || rows.length !== 3 || rows.some(row => row[4] !== rows[0][4]) || fit.length !== 1 || fit[0].map(k => 'wxyz'[k]).join('') !== p.answer) bad = `задание 2, вариант ${s}: подходят ${fit.map(q => q.map(k => 'wxyz'[k]).join('')).join(', ') || 'никакие'} при ответе ${p.answer}`; }
+      // 19–21: ходы и N читаются из текста (и сверяются с примером), стратегии считаются перебором с ограниченной глубиной
+      for (const n of [19, 20, 21]) for (const p of g.problems(lv(n), s)) { const N = +p.text.match(/не менее (\d+) кам/)[1], add = [...p.text.matchAll(/добавить в кучу (\S+) кам/g)].map(m => NUM[m[1]]), mul = [...p.text.matchAll(/в (\S+) раза/g)].map(m => NUM[m[1]]);
+        const [, s0, ex] = p.text.match(/из кучи в (\d+) камней за один ход можно получить кучу из (.+?) камн/), mv = x => [...add.map(a => x + a), ...mul.map(k => x * k)];
+        const win = (x, k) => mv(x).some(y => y >= N || k > 1 && lose(y, k - 1)), lose = (x, k) => mv(x).every(y => y < N && win(y, k)), S = [...Array(N - 1).keys()].map(x => x + 1);
+        const want = n === 20 ? S.filter(x => win(x, 2) && !win(x, 1)) : n === 21 ? S.filter(x => lose(x, 2) && !lose(x, 1)) : /неудачного/.test(p.text) ? S.filter(x => mv(x).some(y => y < N && win(y, 1))) : S.filter(x => lose(x, 1));
+        if (ex.split(/, | или /).map(Number).join() !== [...new Set(mv(+s0))].sort((a, b) => a - b).join() || !add.length || add.includes(undefined) || mul.includes(undefined)) bad = `задание ${n}, вариант ${s}: ходы в тексте и в примере расходятся`;
+        else if (n === 20 ? want.length !== 2 || want.join(' ') !== p.answer : !want.length || want[0] !== p.answer) bad = `задание ${n}, вариант ${s}: перебор даёт ${want.join(' ')}, а ответ ${p.answer}`;
+        if (n === 19 && /неудачного/.test(p.text)) luck++; }
+      // 22: время окончания уточняется проходами по таблице, пока не перестанет меняться
+      for (const p of g.problems(lv(22), s)) { const rows = p.table.slice(1).map(r => [+r[0], +r[1], r[2] === '0' ? [] : r[2].split(';').map(Number)]), end = {}, T = p.text.match(/не позднее чем через (\d+) мс/);
+        for (let pass = 0; pass <= rows.length; pass++) for (const [id, t, d] of rows) end[id] = t + Math.max(0, ...d.map(x => end[x] || 0));
+        const want = T ? Object.values(end).filter(x => x <= +T[1]).length : Math.max(...Object.values(end)); if (want !== p.answer || rows.some(([id, , d]) => d.some(x => x === id || !end[x]))) bad = `задание 22, вариант ${s}: пересчёт ${want}, ответ ${p.answer}`; if (T) byT++; } }
+    // проверка ответов: верные (и в вольной записи) дают три звезды, неверные не засчитываются
+    for (const n of [1, 2, 19, 20, 21, 22]) for (const seed of [1, 2, 3]) { const l = lv(n), ps = g.problems(l, seed), sol = {seed, answers: ps.map(p => String(p.answer))}, stars = a => (g.check(l, {seed, answers: a}) || {}).stars || 0;
+      const loose = ps.map(p => p.kind === 'vars' ? ` ${p.answer.toUpperCase().split('').join(', ')} ` : p.kind === 'pair' ? p.answer.replace(' ', ', ') : ` ${p.answer} `), wrong = ps.map(p => p.kind === 'vars' ? [...p.answer].reverse().join('') : p.kind === 'pair' ? p.answer.split(' ').reverse().join(' ') : String(p.answer + 1));
+      const ru = ps.map(p => p.kind === 'vars' ? p.answer.replace(/x/g, 'х').replace(/y/g, 'у') : p.kind === 'pair' ? p.answer.replace(' ', ';') : p.answer + ''), half = ps.map(p => p.kind === 'pair' ? p.answer.split(' ')[0] : p.kind === 'vars' ? p.answer.slice(0, 3) : '');
+      if (stars(sol.answers) !== 3 || stars(loose) !== 3 || stars(ru) !== 3 || g.check(l, {seed, answers: wrong}).ok || g.check(l, {seed, answers: half}).ok) bad = `задание ${n}, вариант ${seed}: проверка ответа (${loose.join(' / ')} | ${wrong.join(' / ')})`; }
+    check('ЕГЭ-арена: задания 1, 2, 19–22 сходятся с независимым перебором на 300 вариантах; в 1 и 2 ответ единственный; вольная запись ответа принимается, неверная — нет', !bad && sym > 0 && sums > 0 && luck > 0 && byT > 0, bad || `симметричных схем ${sym}, сумм двух дорог ${sums}, «неудачный ход» ${luck}, «к моменту T» ${byT}`); }
   // Новые игры: верстальщик — исходный документ всегда отличается от образца; компьютер — деталь не в своём гнезде не проходит; автопилот — заученный маршрут не долетает.
   { const lo = G.layout, pc = G.pcbuild, ap = G.autopilot; let bad = '';
     for (const l of lo.LEVELS) { const st = l.doc.map(p => { const o = {...p}; for (const k of l.used) o[k] = {align: 'left', bold: false, italic: false, size: 'm', kind: 'p', indent: false, margin: 0}[k]; return o; }); if (lo.check(l, st).ok) bad = 'верстальщик: «' + l.title + '» уже готов в начале'; }

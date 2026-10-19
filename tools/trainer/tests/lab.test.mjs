@@ -8,7 +8,7 @@ await b.size(1440, 900); await b.send('Page.navigate', {url: URL}); await b.slee
 b.check('двадцать игр на странице, у каждой обложка', await b.ev("return [...document.querySelectorAll('.lab-card img')].filter(i=>i.complete&&i.naturalWidth>100).length===20"));
 await click('[data-game=factory]'); await b.ev("await waitFor(()=>document.querySelector('.lab-lgrid'))");
 b.check('уровни открываются по порядку: первый открыт, второй закрыт (на стенде открыты все для проверки)', await b.ev("return document.querySelectorAll('.lab-level').length===15&&/открыт/.test(document.querySelector('[data-level=\"1\"]').textContent)&&/закрыт/.test(document.querySelector('[data-level=\"2\"]').textContent)"));
-const counts = {pcbuild: 8, layout: 10, autopilot: 8, ege: 12, arrays: 10, logic: 8, ipnet: 8, oge: 8, sheets: 12, bytes: 10, sets: 10, executors: 23, office: 12, gates: 14, factory: 15, detective: 9, dbcity: 14, pixel: 15, race: 12, quest: 8};
+const counts = {pcbuild: 8, layout: 10, autopilot: 8, ege: 18, arrays: 10, logic: 8, ipnet: 8, oge: 8, sheets: 12, bytes: 10, sets: 10, executors: 23, office: 12, gates: 14, factory: 15, detective: 9, dbcity: 14, pixel: 15, race: 12, quest: 8};
 for (const [id, n] of Object.entries(counts)) { let ok = true, info = '';
   for (let lv = 1; lv <= n && ok; lv++) { await b.ev(`window.labDone=null;labGo('${id}',${lv})`); await b.sleep(120);
     if (id === 'detective') { const steps = await b.ev('return window.labNow.level.steps.length');
