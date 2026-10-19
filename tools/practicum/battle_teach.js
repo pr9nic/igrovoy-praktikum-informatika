@@ -2,7 +2,7 @@
 // живая панель (таблица ученик × вопрос, особые условия, пауза) с экраном для проектора и отчёты.
 (() => {
   'use strict';
-  const B = window.BattleQ, {h, btn, img, API, ART, MODES, TYPES, TYPE_ICON, POWER, COLORS, SHAPES, TIERS, THEMES} = B;
+  const B = window.BattleQ, BL = window.BattleLogic, {h, btn, img, API, ART, MODES, TYPES, TYPE_ICON, POWER, COLORS, SHAPES, TIERS, THEMES} = B;
   let timer = 0;
   const stop = () => { clearInterval(timer); timer = 0; B.Sound.stop(); };
   const fmtDate = t => new Date(t * 1000).toLocaleString('ru-RU', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
@@ -62,8 +62,27 @@
       const qz = JSON.parse(JSON.stringify(quiz)); let cur = qz.questions.length ? 0 : -1;
       const title = input(qz.title, 'Название викторины'), grade = select([['0', 'для всех классов'], ...[6, 7, 8, 9, 10, 11].map(g => [String(g), g + ' класс'])], qz.grade || 0);
       const listBox = h('div', 'btt-qlist'), form = h('div', 'btt-form'), err = h('p', 'btt-err');
-      const save = btn('💾 Сохранить', 'p-primary', async () => { qz.title = title.value; qz.grade = Number(grade.value); try { const r = await API('save', {quiz: {title: qz.title, grade: qz.grade, questions: qz.questions}, id: qz.id}); qz.id = r.id; err.textContent = ''; msg('Викторина сохранена.'); } catch (e) { err.textContent = e.message; } });
-      save.dataset.act = 'btt-save';
+      const store = async () => { qz.title = title.value; qz.grade = Number(grade.value); try { const r = await API('save', {quiz: {title: qz.title, grade: qz.grade, questions: qz.questions}, id: qz.id}); qz.id = r.id; err.textContent = ''; return true; } catch (e) { err.textContent = e.message; return false; } };
+      const save = btn('💾 Сохранить', 'p-primary', async () => { if (await store()) msg('Викторина сохранена.'); }); save.dataset.act = 'btt-save';
+      const play = btn('▶ Играть', 'p-small', async () => { if (await store()) host({id: qz.id, title: qz.title}); }); play.dataset.act = 'btt-edplay'; play.title = 'Сохранить и открыть лобби';
+      const paste = h('div', 'btt-paste');
+      const sheet = btn('📋 Вставить из таблицы', 'p-small', () => { if (paste.childNodes.length) { paste.replaceChildren(); return; } tablePaste(); }); sheet.dataset.act = 'btt-sheet';
+      // Импорт из Excel / CSV: вставка из буфера, разбор — BattleLogic.csvQuestions (кавычки; разделители — табуляция, «;», «,»).
+      function tablePaste() {
+        const t = area('', 'Скопируйте строки из Excel или CSV и вставьте сюда (Ctrl+V).\nКолонки: вопрос | правильный ответ | неверный | неверный …\nСколько бит в байте?\t8\t16\t10\nСтолица России\tМосква', 8); t.dataset.field = 'btt-sheet';
+        const delim = select([['', 'разделитель: сам'], ['\t', 'табуляция (Excel)'], [';', 'точка с запятой'], [',', 'запятая']], ''), out = h('div', 'btt-sheetout');
+        let got = {questions: [], warnings: []};
+        const parse = () => { got = BL.csvQuestions(t.value, delim.value || undefined); out.replaceChildren();
+          if (!t.value.trim()) return; const kinds = {}; for (const q of got.questions) kinds[q.type] = (kinds[q.type] || 0) + 1;
+          out.append(h('b', '', `Найдено вопросов: ${got.questions.length}` + (got.questions.length ? ' (' + Object.entries(kinds).map(([k, n]) => `${TYPES[k].toLowerCase()} — ${n}`).join(', ') + ')' : '')));
+          if (got.warnings.length) { const ul = h('ul', 'btt-warn'); for (const w of got.warnings.slice(0, 12)) ul.append(h('li', '', w)); if (got.warnings.length > 12) ul.append(h('li', '', `…и ещё ${got.warnings.length - 12}`)); out.append(ul); } };
+        t.addEventListener('input', parse); delim.addEventListener('change', parse);
+        const clip = btn('Вставить из буфера', 'p-small', async () => { try { t.value = await navigator.clipboard.readText(); parse(); } catch { t.focus(); msg('Браузер не дал прочитать буфер — щёлкните в поле и нажмите Ctrl+V.'); } });
+        const add = btn('＋ Добавить в викторину', 'p-primary', () => { if (!got.questions.length) return alert('Не нашёл ни одного вопроса: нужны хотя бы два столбца — вопрос и правильный ответ.');
+          const room = 60 - qz.questions.length; if (room <= 0) return alert('В викторине уже 60 вопросов.'); const first = qz.questions.length; qz.questions.push(...got.questions.slice(0, room));
+          if (!title.value.trim()) title.value = 'Викторина из таблицы'; msg(`Добавлено вопросов: ${Math.min(room, got.questions.length)}. Верный вариант в таблице — первый, в игре варианты перемешаются.`); paste.replaceChildren(); cur = first; drawList(); drawForm(); });
+        add.dataset.act = 'btt-sheet-add'; const row = h('div', 'btt-row'); row.append(delim, clip, add, btn('Отмена', 'p-small', () => paste.replaceChildren()));
+        paste.replaceChildren(h('h3', '', '📋 Вопросы из таблицы'), h('p', 'p-note', 'Колонка 1 — вопрос, 2 — правильный ответ (несколько верных — через «|»), дальше — неверные. Без неверных — ответ вводится в поле (число — числовой ответ). Можно добавить столбцы «Время» и «Пояснение» с заголовками в первой строке.'), t, row, out); t.focus(); }
       const typeGrid = h('div', 'btt-typegrid'); for (const t of Object.keys(TYPES)) { const b = btn('', 'btt-type', () => { qz.questions.push(blank(t)); cur = qz.questions.length - 1; drawList(); drawForm(); }); b.dataset.type = t; b.append(h('b', '', TYPE_ICON[t]), h('span', '', TYPES[t])); typeGrid.append(b); }
       function blank(t) { const q = {type: t, text: '', time: 30, weight: 1, explain: ''};
         if (t === 'single' || t === 'poll') Object.assign(q, {options: ['', '', '', ''], answer: 0}); if (t === 'multi') Object.assign(q, {options: ['', '', '', ''], answers: [0]});
@@ -124,9 +143,9 @@
       }
       const left = h('div', 'btt-edleft'); left.append(listBox, h('h4', '', 'Добавить вопрос'), typeGrid.cloneNode(false)); const addGrid = left.lastChild;
       for (const t of Object.keys(TYPES)) { const b = btn('', 'btt-type small', () => { qz.questions.push(blank(t)); cur = qz.questions.length - 1; drawList(); drawForm(); }); b.dataset.add = t; b.title = TYPES[t]; b.append(h('b', '', TYPE_ICON[t]), h('span', '', TYPES[t])); addGrid.append(b); }
-      const head = h('div', 'btt-row'); head.append(field('Название', title), field('Класс', grade), save, btn('← К библиотеке', 'p-small', library));
+      const head = h('div', 'btt-row'); head.append(field('Название', title), field('Класс', grade), save, play, sheet, btn('← К библиотеке', 'p-small', library));
       const cols = h('div', 'btt-editor'); cols.append(left, form);
-      body.replaceChildren(h('h2', '', qz.id ? 'Редактор викторины' : 'Новая викторина'), head, err, cols); drawList(); drawForm();
+      body.replaceChildren(h('h2', '', qz.id ? 'Редактор викторины' : 'Новая викторина'), head, err, paste, cols); drawList(); drawForm();
     }
 
     /* ---------- запуск игры ---------- */
@@ -177,6 +196,7 @@
       function drawScreen() {
         const key = JSON.stringify([d.phase, d.paused, d.board.map(x => [x.name, x.score, x.mastery]), d.paced, d.teams, d.players.length, d.titles, Object.values(d.clouds || {}).map(x => x.length)]); if (key === lastKey) { const t = screen.querySelector('.btt-left'); if (t && d.paced && d.paced.left != null) t.textContent = Math.ceil(d.paced.left) + ' с'; return; } lastKey = key;
         screen.replaceChildren(); screen.dataset.phase = d.phase; screen.dataset.mode = d.mode;
+        if (d.phase === 'ended' && d.board.length) { screen.append(h('h1', 'btt-big', '🏆 ' + d.title), B.podium(d.board.slice(0, 3), climber, 'big')); B.confetti(screen); B.Sound.sfx('win'); }
         if (d.phase === 'lobby') { screen.append(img(ART + 'lobby_bg.webp', 'btt-bg', ''), h('h1', 'btt-big', d.title), h('p', 'btt-sub', `${cls} · ${MODES[d.mode][0]} · ученики входят из практикума сами`), h('div', 'btt-count', String(d.players.length)));
           const names = h('div', 'btt-names'); for (const p of d.players) { const n = h('span'); n.append(img(climber(p.avatar), '', ''), document.createTextNode(p.short)); names.append(n); } screen.append(names); return; }
         if (d.mode === 'paced' && d.paced && d.phase === 'live') { const p = d.paced, q = p.q, grid2 = h('div', 'btt-popts');
@@ -245,9 +265,24 @@
         for (const p of ps) rows.push([p.name, p.score, p.acc, p.mastery ?? '', p.team || '', ...qs.map(q => { const a = p.answers[q.id]; return a ? (a.teacher != null ? (a.teacher ? 'верно' : 'неверно') : a.frac == null ? a.text : Math.round(100 * a.frac) + '%') : ''; })]);
         const text = '﻿' + rows.map(r2 => r2.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n'); const a = h('a'); a.href = URL.createObjectURL(new Blob([text], {type: 'text/csv'})); a.download = `${r.cls} ${r.title}.csv`.replace(/[\\/:*?"<>|]/g, '_'); a.click(); });
       const del = btn('🗑 Удалить отчёт', 'p-small', async () => { if (confirm('Удалить этот отчёт?')) { await API('dropresult', {id}); reports(); } });
+      const again = btn('🔁 Повторение ошибок', 'p-primary', () => redo(r, again)); again.dataset.act = 'btt-redo'; again.title = 'Собрать викторину из вопросов, где класс ошибся';
       const titles = h('div', 'bt2-titles'); for (const t of r.titles || []) { const c = h('div'); c.append(h('b', '', t.title), h('span', '', t.name)); titles.append(c); }
-      const head = h('div', 'btt-row'); head.append(btn('← Все отчёты', 'p-small', reports), csv, btn('🖨 Печать', 'p-small', () => print()), del);
+      const head = h('div', 'btt-row'); head.append(btn('← Все отчёты', 'p-small', reports), again, csv, btn('🖨 Печать', 'p-small', () => print()), del);
       body.replaceChildren(head, h('h2', '', `${r.title} · ${r.cls} · ${MODES[r.mode][0]}`), h('p', 'p-note', `${fmtDate(r.started)} — ${fmtDate(r.ended)}. Отметки в журнал не отправляются.`), cards, ...(r.titles && r.titles.length ? [titles] : []), h('h3', '', 'Вопросы'), qt, h('h3', '', 'Ученики'), st, ...(gallery.childNodes.length ? [h('h3', '', 'Ответы без автоматической проверки'), gallery] : []));
+    }
+
+    // «Повторение ошибок»: викторина из вопросов отчёта, где ошибся хотя бы один ученик (с первой попытки), трудные — первыми.
+    // В отчёте нет картинок — берём их из викторины-источника в библиотеке (по названию и номерам вопросов).
+    async function redo(r, b) {
+      b.disabled = true; const images = {}; let grade = parseInt(r.cls, 10) || 0;
+      try { const lib = (await API('library')).quizzes.filter(x => x.title === r.quiz.title), need = new Set(r.quiz.questions.filter(q => q.hasImage).map(q => q.id));
+        for (const x of lib) { if (!need.size) break; const full = (await API('quiz', {id: x.id})).quiz; let hit = false;
+          for (const q of full.questions) if (need.has(q.id) && q.image) { images[q.id] = q.image; need.delete(q.id); hit = true; } if (hit || lib.length === 1) grade = full.grade; } } catch {}
+      const m = BL.mistakes(r, {images}); b.disabled = false;
+      if (!m.questions.length) return alert('В этом отчёте нет вопросов с ошибками — повторять нечего. 🎉');
+      try { const s = await API('save', {quiz: {title: m.title, grade, questions: m.questions}}); editor({id: s.id, title: m.title, grade, questions: m.questions});
+        msg(`Собрана викторина «${m.title}»: вопросов ${m.questions.length}, самые трудные — первыми.` + (m.skipped.length ? ` ${m.skipped.length > 1 ? 'Пропущены вопросы' : 'Пропущен вопрос'} № ${m.skipped.join(', ')}: картинка не нашлась в библиотеке.` : '') + ' Нажмите «▶ Играть», чтобы открыть лобби.'); }
+      catch (e) { alert('Не удалось сохранить викторину: ' + e.message); }
     }
 
     tLib.click();

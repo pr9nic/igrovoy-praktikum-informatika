@@ -175,5 +175,29 @@
     box.querySelectorAll('.bq-go').forEach(b => { b.disabled = true; });
   }
 
-  window.BattleQ = {speakText: qSpeech, renderQ, solText, markSolution, TYPES, TYPE_ICON, h, btn, img, API, Sound, speak, MODES, POWER, COLORS, SHAPES, TIERS, THEMES, GOOD, BAD, ART, pick};
+  /* ---------- праздник: пьедестал и конфетти (без движения, если в системе включено «уменьшить движение») ---------- */
+  const calm = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
+  function confetti(host, ms = 6000) {
+    if (calm() || !host) return null;
+    const cv = h('canvas', 'bt-confetti'), g = cv.getContext('2d'); if (!g) return null; host.append(cv);
+    const W = () => cv.width = host.clientWidth || 800, H = () => cv.height = host.clientHeight || 600; W(); H();
+    const bits = Array.from({length: 170}, () => ({x: Math.random() * cv.width, y: -Math.random() * cv.height * 0.8, vx: (Math.random() - 0.5) * 80, vy: 90 + Math.random() * 160, r: Math.random() * 6, vr: (Math.random() - 0.5) * 8, s: 6 + Math.random() * 8, c: COLORS[Math.floor(Math.random() * 7)]}));
+    let last = performance.now(); const t0 = last;
+    const frame = now => { if (!cv.isConnected) return; const dt = Math.min(0.05, (now - last) / 1000), fade = Math.max(0, Math.min(1, (t0 + ms - now) / 1200)); last = now;
+      if (cv.width !== host.clientWidth || cv.height !== host.clientHeight) { W(); H(); } g.clearRect(0, 0, cv.width, cv.height); g.globalAlpha = fade;
+      for (const b of bits) { b.x += b.vx * dt + Math.sin(now / 400 + b.s) * 0.6; b.y += b.vy * dt; b.r += b.vr * dt; if (b.y > cv.height + 20 && now - t0 < ms - 1500) { b.y = -20; b.x = Math.random() * cv.width; }
+        g.save(); g.translate(b.x, b.y); g.rotate(b.r); g.fillStyle = b.c; g.fillRect(-b.s / 2, -b.s / 4, b.s, b.s / 2); g.restore(); }
+      if (fade > 0) requestAnimationFrame(frame); else cv.remove(); };
+    requestAnimationFrame(frame); return cv;
+  }
+  // Пьедестал тройки лидеров: колонны поднимаются по очереди — третье, второе, первое место (анимация — в battle.css).
+  function podium(top, climber, cls = '') {
+    const pod = h('div', 'bt-podium ' + cls); if (calm()) pod.classList.add('calm');
+    for (const [i, k] of [[1, 'silver'], [0, 'gold'], [2, 'bronze']]) { const t = top[i]; if (!t) continue; const c = h('div', 'bt-pod ' + k), col = h('div', 'bt-col');
+      c.style.setProperty('--d', [1.1, 0.6, 0.1][i] + 's'); c.dataset.place = i + 1;
+      col.append(h('i', '', String(i + 1))); c.append(img(climber(t.avatar), 'bt-podav', ''), h('b', '', t.name), h('span', '', String(t.score)), col); pod.append(c); }
+    return pod;
+  }
+
+  window.BattleQ = {calm, confetti, podium, speakText: qSpeech, renderQ, solText, markSolution, TYPES, TYPE_ICON, h, btn, img, API, Sound, speak, MODES, POWER, COLORS, SHAPES, TIERS, THEMES, GOOD, BAD, ART, pick};
 })();
