@@ -15,10 +15,13 @@ COND_RU={'free':'впереди свободно','wall':'впереди сте�
 OPS={'+','-','*','/','//','%','**','<','>','<=','>=','==','!=','and','or','not','->','<->','at','len'}
 def need(ok,msg):
     if not ok:raise ValueError('Тренажёр: '+msg)
-def string(x,label,limit=1500):need(isinstance(x,str) and 0<len(x.strip())<=limit,label+' — обязательный текст')
+def string(x,label,limit=1500):need(isinstance(x,str) and x.strip() and len(x)<=limit,label+' — обязательный текст')
 def integer(x,lo,hi,label):need(type(x) is int and lo<=x<=hi,f'{label}: целое {lo}–{hi}')
 
 def ev(e,env):
+    # trainer.js считает в double: целые точны только до 2**53, дальше браузер получит другой ответ.
+    v=ev1(e,env);need(isinstance(v,list) or (type(v) in (int,float) and abs(v)<=2**53),'значение больше 2**53 или не число в '+repr(e));return v
+def ev1(e,env):
     if type(e) in (int,float):return e
     if isinstance(e,str):
         need(e in env,'переменная '+e+' используется до присваивания');return env[e]
@@ -36,6 +39,7 @@ def ev(e,env):
     if op=='or':return 1 if x or ev(e[2],env) else 0
     y=ev(e[2],env)
     if op in ('/','//','%'):need(y!=0,'деление на ноль')
+    if op=='**':need(abs(x)<=1 or y*math.log2(abs(x))<=53,'степень больше 2**53')   # не считаем огромное число целиком
     return {'+':lambda:x+y,'-':lambda:x-y,'*':lambda:x*y,'/':lambda:x/y,'//':lambda:x//y,'%':lambda:x%y,'**':lambda:x**y,
             '<':lambda:int(x<y),'>':lambda:int(x>y),'<=':lambda:int(x<=y),'>=':lambda:int(x>=y),'==':lambda:int(x==y),'!=':lambda:int(x!=y)}[op]()
 
@@ -115,7 +119,8 @@ def run_program(level):
                 for _ in range(s['n']):run(s['body'],stack)
             elif op=='for':
                 need(isinstance(s.get('var'),str) and type(s.get('from')) is int and type(s.get('to')) is int and s['from']<s['to'],'for: var, from < to')
-                for i in range(s['from'],s['to']):env[s['var']]=i;run(s['body'],stack)
+                for i in range(s['from'],s['to']):
+                    guard[0]+=1;need(guard[0]<=3000,'цикл не заканчивается');env[s['var']]=i;run(s['body'],stack)
             elif op=='set':need(isinstance(s.get('var'),str),'set.var');env[s['var']]=ev(s['expr'],env)
             elif op=='seta':
                 need(isinstance(env.get(s.get('arr')),list),'seta: нет массива');i=ev(s['idx'],env);need(type(i) is int and 0<=i<len(env[s['arr']]),'seta: индекс вне массива');env[s['arr']][i]=ev(s['expr'],env)
@@ -126,7 +131,7 @@ def run_program(level):
             elif op=='call':
                 need(s.get('name') in funcs and s['name'] not in stack,'call: неизвестный или рекурсивный алгоритм');run(funcs[s['name']],stack+[s['name']])
             else:need(False,'неизвестная команда '+repr(op))
-    run(level['program'],[])
+    run(level.get('program'),[])
     return moves,env
 
 def draw_public(level):
@@ -289,14 +294,16 @@ def validate_level(level,world,key):
         lines=[]
         for t in tasks:
             string(t.get('text'),'calc.text');vars_=t.get('vars',{})
-            need(isinstance(vars_,dict) and all(isinstance(v,list) and v and all(type(n) is int for n in v) for v in vars_.values()),'vars: списки целых')
+            # \w в trainer.js — только латиница: {скорость} ученик увидел бы как есть.
+            need(isinstance(vars_,dict) and all(re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*',k) and isinstance(v,list) and v and all(type(n) is int for n in v) for k,v in vars_.items()),'vars: имена латиницей, значения — списки целых')
             need(set(re.findall(r'\{(\w+)\}',t['text']))<=set(vars_),'в тексте есть {переменная} без значений')
             if 'unit' in t:string(t['unit'],'unit',80)
             if 'tip' in t:string(t['tip'],'tip',300)
             combos=list(itertools.product(*vars_.values()));need(len(combos)<=5000,'слишком много сочетаний значений')
             need(len(tasks)>1 or len(combos)>=4,'слишком мало разных заданий в серии')
             for c in combos:
-                v=ev(t['answer'],dict(zip(vars_,c)));need(math.isfinite(v) and abs(v-round(v))<1e-9 and 0<=v<10**9,f"{level['id']}: ответ не целый или вне диапазона при {dict(zip(vars_,c))}")
+                # Ответ — ровно целое: почти целое (1e-10) подвешивает в браузере режим «Гонка».
+                v=ev(t['answer'],dict(zip(vars_,c)));need((type(v) is int or (type(v) is float and v.is_integer())) and 0<=v<10**9,f"{level['id']}: ответ не целый или вне диапазона при {dict(zip(vars_,c))}")
             c=combos[0];text=t['text']
             for k,v in zip(vars_,c):text=text.replace('{'+k+'}',str(v))
             lines.append(f"{text} → {round(ev(t['answer'],dict(zip(vars_,c))))}")
@@ -369,7 +376,7 @@ def validate_trainer(data,topics):
             need(isinstance(level,dict),'уровень должен быть объектом')
             for k in ('id','title','prompt','hint','explanation'):string(level.get(k),k)
             if 'clue' in level:string(level['clue'],'clue',300)
-            if 'play' in level:need((level['play'],world['type']) in {('race','calc'),('race','binary'),('shooter','snake')},level['id']+': play — race для calc/binary или shooter для snake')
+            if 'play' in level:need(isinstance(level['play'],str) and (level['play'],world['type']) in {('race','calc'),('race','binary'),('shooter','snake')},level['id']+': play — race для calc/binary или shooter для snake')
             need(re.fullmatch(r'[a-z][a-z0-9-]{1,40}',level['id']) and level['id'] not in ids,'level.id: уникальный латиницей: '+level['id']);ids.add(level['id'])
             key=[];validate_level(level,world,key);keys[level['id']]=key[0]
     return keys
