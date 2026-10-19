@@ -194,4 +194,13 @@ qx = Q(u, ready=True).get_json()['q']['id']; n.append(Q(u, 'answer', q=qx, answe
 qx = Q(u, ready=True).get_json()['q']['id']; n.append(Q(u, 'answer', q=qx, answer=[0] * 100000).status_code)
 check('огромные списки вместо ответа отклоняются; рисунок без ответа (время вышло) принят', n == [400, 200, 200, 400] and p['answers'][qc]['raw'] == 'алгоритмы' and qx not in p['answers'], (n, str(p['answers'].get(qc))[:80]))
 teacher[0] = True; T(className=B7, action='close'); teacher[0] = False
+# повторная попытка «Восхождения» в той же игре вершину заново не засчитывает
+rm, (u,) = room_with([one(i) for i in range(4)], mode='peak', names=('Альпинист Повтор',), goal=50, attempts=3); p = rm['players'][u['key']]
+def climb():
+    for _ in range(40):
+        if p['done']: return
+        if p['brk']: Q(u, 'break', pick=p['brk']['offers'][0], mini=0); continue
+        qx = Q(u, ready=True).get_json()['q']['id']; Q(u, 'answer', q=qx, answer=B.solution(rm['qmap'][qx], p['keys'][qx]['key']))
+climb(); first = G.climber(B7, 'Альпинист Повтор')['summits']; Q(u, 'retry'); climb()
+check('повторная попытка «Восхождения» не даёт вторую вершину', first == 1 and p['summit_at'] and G.climber(B7, 'Альпинист Повтор')['summits'] == 1, (first, G.climber(B7, 'Альпинист Повтор')))
 print('ALL OK' if not fails else f'FAILED {fails}'); sys.exit(1 if fails else 0)

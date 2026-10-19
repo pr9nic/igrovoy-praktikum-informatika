@@ -741,7 +741,9 @@ class Battle:
         if not p['summit_at'] and mastery * 100 >= r['settings']['goal']:
             p['summit_at'] = now
             self.event(r, 'summit', f'{short(p["name"])} достиг вершины!', p['key'], now)
-            self.add_summit(r['cls'], p['name'])
+            if not p.get('climbed'):              # повторная попытка в той же игре вершину заново не засчитывает
+                p['climbed'] = True
+                self.add_summit(r['cls'], p['name'])
         if not p['queue']:
             self.finish_player(r, p, now)
 
