@@ -15,8 +15,9 @@ from flask import jsonify, request
 
 from portal_security import client_ip, is_teacher
 
-SLUG = re.compile(r'trainer-(\d{1,2})-[a-z0-9-]{1,40}')
-CLASS = re.compile(r'(\d{1,2}) «[А-ЯЁ]»')
+SLUG = re.compile(r'trainer-(6|7|8|9|10|11)-[a-z0-9-]{1,40}')   # класс без ведущего нуля: «08 «А»» был бы классом без списка
+CLASS = re.compile(r'(6|7|8|9|10|11) «[А-ЯЁ]»')
+MAX_LEVELS = 300
 ITEM = re.compile(r'[a-z][a-z0-9-]{1,40}')
 MARKER = ': Кодоград'
 
@@ -54,7 +55,7 @@ def install_trainer(app, data_dir, journal_db, after_journal_change=None, comput
 
     def slug_of(value):
         match = SLUG.fullmatch(str(value or ''))
-        if not match or not 6 <= int(match.group(1)) <= 11:
+        if not match:
             raise Refused('Неизвестный тренажёр.')
         return match.group(0), match.group(1)
 
@@ -88,7 +89,7 @@ def install_trainer(app, data_dir, journal_db, after_journal_change=None, comput
         return slug, class_name, key, name
 
     def clean_levels(raw):
-        if not isinstance(raw, dict) or len(raw) > 300:
+        if not isinstance(raw, dict) or len(raw) > MAX_LEVELS:
             raise Refused('Некорректный прогресс.')
         levels = {}
         for level_id, rec in raw.items():
@@ -102,11 +103,11 @@ def install_trainer(app, data_dir, journal_db, after_journal_change=None, comput
         result = dict(old)
         for level_id, rec in new.items():
             before = result.get(level_id)
-            if not before or rec['stars'] > before['stars']:
-                result[level_id] = {**rec, 'plays': max(rec['plays'], before['plays'] if before else 0),
+            if not before or rec['stars'] > before.get('stars', 0):
+                result[level_id] = {**rec, 'plays': max(rec['plays'], before.get('plays', 0) if before else 0),
                                     'clean': rec['clean'] or bool(before and before.get('clean'))}
             else:
-                result[level_id] = {**before, 'plays': max(rec['plays'], before['plays']),
+                result[level_id] = {**before, 'plays': max(rec['plays'], before.get('plays', 0)),
                                     'clean': rec['clean'] or bool(before.get('clean'))}
         return result
 
@@ -181,11 +182,13 @@ def install_trainer(app, data_dir, journal_db, after_journal_change=None, comput
                 levels, sent = load(conn, slug, class_name, key)
                 if request.method == 'POST':
                     levels = merged(levels, clean_levels(data.get('levels')))
+                    if len(levels) > MAX_LEVELS:   # предел на ученика, а не только на один запрос
+                        raise Refused('Некорректный прогресс.')
                     store(conn, slug, class_name, key, name, levels, sent)
             return jsonify(status='ok', name=name, levels=levels, sent=sent)
         except Refused as error:
             return fail(error)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError):   # OverflowError: Infinity и 1e999 в JSON
             return fail(Refused('Некорректный запрос.'))
 
     @app.route('/results/api/trainer/submit', methods=['POST'])
@@ -239,7 +242,7 @@ def install_trainer(app, data_dir, journal_db, after_journal_change=None, comput
             return jsonify(status='ok', id=record_id, time=stamp, updated=updated, sent=sent)
         except Refused as error:
             return fail(error)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError):   # OverflowError: Infinity и 1e999 в JSON
             return fail(Refused('Некорректный запрос.'))
 
     def teacher_only():

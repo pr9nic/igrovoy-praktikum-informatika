@@ -12,6 +12,8 @@ run "Кодополия по сети: сервер" python3 tools/kodopoly/test
 run "Сбой на станции: правила" python3 tools/crew/tests/rules_test.py
 run "Гонка: сервер" python3 tools/lab/tests/race_test.py
 run "Тренажёр: рекорды класса" python3 tools/trainer/tests/leaderboard.test.py
+run "Тренажёр: сервер" python3 tools/trainer/tests/trainer_api_test.py
+run "Тенегрыз: рекорды" python3 tools/typing_escape/tests/typing_api_test.py
 run "Издатель и шаблоны" bash -c 'python3 tools/check_templates.py && echo ALL OK'
 if command -v godot >/dev/null; then   # Godot без окна: уровни мастерской, генераторы «Клеток памяти», правила аркад
   godot --headless --path godot/workshop --import >/dev/null 2>&1

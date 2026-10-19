@@ -166,13 +166,16 @@ def install_practicum(app, data_dir, site_root, today=None):
 
     def observe(conn, slug, grade, class_name, key, name, levels, games):
         """Сравнивает прогресс с прошлым снимком: прибавку звёзд записывает в события, задание дня — в daily."""
+        if not games:   # страницы практикума нет — снимок не трогаем, прибавка засчитается, когда она появится
+            return
+        real = {f"{g['id']}-{n}" for g in games for n in range(1, g['levels'] + 1)}   # в лигу идут только этапы игр класса
         row = conn.execute('SELECT levels_json FROM seen WHERE slug = ? AND class_name = ? AND student_key = ?', (slug, class_name, key)).fetchone()
         d = today()
         if row is not None:
             old = json.loads(row[0])
             dg = daily_game(games, grade, d)
             for item, rec in levels.items():
-                if item.startswith('daily-'):
+                if item not in real:
                     continue
                 before = old.get(item, {})
                 gained = int(rec.get('stars', 0)) - int(before.get('stars', 0))
@@ -322,8 +325,9 @@ def install_practicum(app, data_dir, site_root, today=None):
                 raise Refused('Ожидается объект.')
             slug, grade, class_name, key, name = who(data)
             games = games_of(grade)
-            name, levels = progress(slug, class_name, key).get(key, (name, {}))
             with lock, connect() as conn:
+                # прогресс читаем под тем же замком: иначе старое чтение перезапишет новый снимок и звёзды засчитаются дважды
+                name, levels = progress(slug, class_name, key).get(key, (name, {}))
                 observe(conn, slug, grade, class_name, key, name, levels, games)
                 out = profile(conn, slug, grade, class_name, key, name, levels, games, award=True)
             return jsonify(status='ok', **out)
@@ -336,7 +340,9 @@ def install_practicum(app, data_dir, site_root, today=None):
     def practicum_avatar():
         """Ученик выбирает аватар; открыт он или нет — решает сервер по звёздам ученика."""
         try:
-            data = request.get_json(force=True, silent=True) or {}
+            data = request.get_json(force=True, silent=True)
+            if not isinstance(data, dict):
+                raise Refused('Ожидается объект.')
             slug, grade, class_name, key, name = who(data)
             idx = data.get('idx')
             if type(idx) is not int or not 0 <= idx < len(AVATAR_STARS):

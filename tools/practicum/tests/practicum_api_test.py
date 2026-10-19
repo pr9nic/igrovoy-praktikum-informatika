@@ -80,4 +80,8 @@ av = lambda i: c.post('/results/api/practicum/avatar', json={'slug': 'trainer-8-
 check('аватар открывается за звёзды: дорогой — отказ, доступный — сохраняется', av(11).status_code == 403 and av(2).status_code == 200 and mq('Сидоров Глеб')['avatar']['idx'] == 2)
 teacher[0] = True; t = c.get('/results/api/practicum/teacher', query_string={'slug': 'trainer-8-practicum', 'className': '8 «А»'}).get_json()
 check('учителю: навыки каждого ученика по темам (тепловая карта) и трудные этапы', t['areas'] and all('skills' in x for x in t['students']) and isinstance(t['hard'], list), {k: t[k] for k in ('areas', 'hard')})
+# --- в лигу идут только этапы игр класса; кривой запрос — понятная ошибка, а не 500 ---
+teacher[0] = False; mq('Лукин Олег'); put('Лукин Олег', {'bits-1': {'stars': 3}, 'bits-99': {'stars': 3}, **{f'zz-{i}': {'stars': 3} for i in range(1, 51)}}); r = mq('Лукин Олег')
+check('выдуманные этапы (zz-1…, bits-99) не дают звёзд в лиге, сезоне и турнире', r['stats']['stars'] == 3 and r['league']['stars'] == 3 and r['season']['stars'] == 3, (r['stats']['stars'], r['league'], r['season']['stars']))
+check('аватар: тело запроса не объект — 400', all(c.post('/results/api/practicum/avatar', json=b).status_code == 400 for b in ([1], 'abc', 5)))
 print('ALL OK' if not fails else f'FAILED {fails}'); sys.exit(1 if fails else 0)

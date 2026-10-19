@@ -65,6 +65,9 @@ def install_typing(app, data_dir):
             raise Refused('Ожидается объект.')
         return data
 
+    def key_of(name):
+        return re.sub(r'\s+', ' ', str(name).strip()).lower().replace('ё', 'е')
+
     def who(data):
         class_name = str(data.get('className') or '')
         name = re.sub(r'\s+', ' ', str(data.get('name') or '').strip())
@@ -73,7 +76,7 @@ def install_typing(app, data_dir):
             raise Refused('Выберите свой класс.')
         if not 5 <= len(name) <= 80 or ' ' not in name or any(ord(c) < 32 for c in name):
             raise Refused('Укажите фамилию и имя.')
-        return class_name, name, name.lower().replace('ё', 'е')
+        return class_name, name, key_of(name)
 
     @app.route('/results/api/typing/top', methods=['POST'])
     def typing_top():
@@ -82,7 +85,7 @@ def install_typing(app, data_dir):
             level, lang, difficulty = stage(data)
             name = re.sub(r'\s+', ' ', str(data.get('name') or '').strip())
             with lock, closing(connect()) as conn:
-                return jsonify(status='ok', **top(conn, level, lang, difficulty, str(data.get('className') or ''), name.lower().replace('ё', 'е')))
+                return jsonify(status='ok', **top(conn, level, lang, difficulty, str(data.get('className') or ''), key_of(name)))
         except Refused as error:
             return fail(error)
 
@@ -152,7 +155,8 @@ def install_typing(app, data_dir):
                     rows = conn.execute('SELECT class_name, name, level, lang, difficulty, cpm, accuracy, created FROM records ORDER BY cpm DESC LIMIT 300').fetchall()
                     return jsonify(status='ok', rows=[dict(zip(('className', 'name', 'level', 'lang', 'difficulty', 'cpm', 'accuracy', 'created'), r)) for r in rows])
                 if data.get('action') == 'remove':
-                    n = conn.execute('DELETE FROM records WHERE class_name = ? AND name = ?', (str(data.get('className') or ''), str(data.get('name') or ''))).rowcount
+                    # по ключу ученика: под разными написаниями имени («Пётр»/«Петр», регистр) хранится один ученик
+                    n = conn.execute('DELETE FROM records WHERE class_name = ? AND student_key = ?', (str(data.get('className') or ''), key_of(data.get('name') or ''))).rowcount
                     return jsonify(status='ok', removed=n)
                 if data.get('action') == 'clear':
                     return jsonify(status='ok', removed=conn.execute('DELETE FROM records').rowcount)
