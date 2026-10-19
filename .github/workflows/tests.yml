@@ -8,12 +8,13 @@ jobs:
   logic:
     name: Логика и серверные модули
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
@@ -21,10 +22,11 @@ jobs:
   godot:
     name: Godot headless
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       GODOT: 4.7.2-stable
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Godot
         run: |
           curl -fsSL -o godot.zip "https://github.com/godotengine/godot/releases/download/$GODOT/Godot_v${GODOT}_linux.x86_64.zip"
@@ -32,6 +34,6 @@ jobs:
       - run: godot --headless --path godot/workshop --import > /dev/null 2>&1 || true
       - run: |
           for t in solutions cells world arcade; do
-            echo "::group::$t"; godot --headless --path godot/workshop --script res://tests/$t.gd | grep -v "^ok "; s=${PIPESTATUS[0]}; echo "::endgroup::"
+            echo "::group::$t"; timeout 600 godot --headless --path godot/workshop --script res://tests/$t.gd | grep -v "^ok "; s=${PIPESTATUS[0]}; echo "::endgroup::"
             [ "$s" -eq 0 ] || { echo "::error::Godot: tests/$t.gd"; exit 1; }
           done
