@@ -12,6 +12,7 @@ run "Кодополия по сети: сервер" python3 tools/kodopoly/test
 run "Сбой на станции: правила" python3 tools/crew/tests/rules_test.py
 run "Гонка: сервер" python3 tools/lab/tests/race_test.py
 if [ "$1" != quick ]; then
+  run "Битва класса: интерфейс (заглушка сервера)" timeout 600 node tools/practicum/tests/battle_ui.test.mjs
   for d in game-8-lab game-9-lab game-8-practicum game-6-typing-escape game-8-crew; do python tools/publish.py drafts/$d.json >/dev/null 2>&1; done
   for t in practicum profile battle kp lab oge typing crew board arcade codehero; do bash tools/trainer/tests/start.sh >/dev/null; run "Браузер: $t" timeout 3000 node tools/trainer/tests/$t.test.mjs; done
   bash tools/trainer/tests/stop.sh >/dev/null
