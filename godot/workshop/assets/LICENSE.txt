@@ -1,0 +1,7 @@
+Графика: Kenney «Sokoban Pack» (kenney.nl), лицензия CC0 1.0.
+Платформер (герой, враги, земля, фоны): Kenney «New Platformer Pack» (kenney.nl), лицензия CC0 1.0.
+Частицы: Kenney «Particle Pack» (kenney.nl), лицензия CC0 1.0.
+Звуки: Kenney «Interface Sounds» (kenney.nl), лицензия CC0 1.0.
+Шрифт Russo One: SIL Open Font License 1.1.
+Шрифт DejaVu Sans Bold: свободная лицензия Bitstream Vera / DejaVu (https://dejavu-fonts.github.io/License.html).
+Движок: Godot Engine 4.7 (MIT).

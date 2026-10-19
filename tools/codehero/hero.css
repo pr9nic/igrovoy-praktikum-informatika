@@ -1,0 +1,66 @@
+/* «Герой кода»: свой тёмный фон — тема портала может быть светлой. */
+#codehero{box-sizing:border-box;width:calc(100% - 24px);max-width:1500px;margin:14px auto 40px;padding:20px 22px 26px;color:#e6edf9;font-family:system-ui,sans-serif;background:linear-gradient(160deg,#131c36,#171331);border:1px solid #2c3a5e;border-radius:24px}
+#codehero *{box-sizing:border-box}
+#codehero button{font:inherit;cursor:pointer}
+#codehero button:focus-visible,#codehero textarea:focus-visible{outline:3px solid #ffd34d;outline-offset:2px}
+.ch-eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#7fe3c8;margin:0}
+.ch-lead{color:#c3cee2;font-size:16px;line-height:1.55;max-width:760px;margin:6px 0 0}
+#codehero h1{margin:4px 0;font-size:clamp(24px,3vw,38px);line-height:1.1}
+.ch-head{display:flex;gap:24px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;margin-bottom:18px}
+.ch-stat{display:flex;flex-direction:column;gap:4px;min-width:260px;background:#182240;border:1px solid #33466e;border-radius:16px;padding:14px 16px}
+.ch-stat strong{font-size:24px;color:#ffd34d}.ch-stat span{color:#b9c6e2;font-size:14px}.ch-stat .ch-mark{color:#7fe3c8;font-weight:700}
+.ch-bar{height:8px;border-radius:5px;background:#0f1730;overflow:hidden;margin-top:6px}.ch-bar i{display:block;height:100%;background:#ffd34d}
+.ch-chapter{display:grid;grid-template-columns:190px 1fr;gap:14px;align-items:start;padding:14px 0;border-top:1px solid #26335a}
+.ch-cap small{color:#7fe3c8;letter-spacing:.1em;text-transform:uppercase;font-size:11px}.ch-cap h2{margin:2px 0 0;font-size:20px}
+.ch-nodes{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.ch-node{display:grid;grid-template-columns:44px 1fr;grid-template-areas:"n t" "n c" "n s";column-gap:12px;text-align:left;background:#1a2545;border:2px solid #34466e;border-bottom-width:5px;border-radius:16px;padding:12px;color:#e6edf9;transition:transform .12s,border-color .12s}
+.ch-node b{grid-area:n;align-self:center;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#7c5cf0;color:#fff;font-size:18px}
+.ch-node strong{grid-area:t;font-size:16px}.ch-node span{grid-area:c;font-size:13px;color:#b9c6e2}.ch-node i{grid-area:s;font-style:normal;font-size:14px;color:#ffd34d;margin-top:4px}
+.ch-node.open:hover,.ch-node.done:hover{transform:translateY(-3px);border-color:#7fe3c8}
+.ch-node.done b{background:#22b07d}.ch-node.locked{opacity:.45;cursor:default}.ch-node.locked b{background:#3a4667}.ch-node.locked i{color:#9fb2d6}
+.ch-node.extra{border-style:dashed}
+.ch-note{color:#9fb2d6;font-size:14px;margin:16px 0 0}
+.ch-top{display:flex;gap:16px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.ch-name{flex:1}.ch-name small{color:#7fe3c8;letter-spacing:.1em;text-transform:uppercase;font-size:11px}.ch-name h1{font-size:26px;margin:0}
+.ch-best{font-size:28px;color:#ffd34d;letter-spacing:2px}
+.ch-btn{background:#243253;border:1px solid #3b4d78;border-bottom-width:3px;color:#e6edf9;padding:9px 14px;border-radius:11px}.ch-btn:hover{background:#2d3d66}
+.ch-run{background:#22b07d;border:0;border-bottom:4px solid #0f7350;color:#04241a;font-weight:800;padding:11px 22px;border-radius:12px;font-size:16px}.ch-run:hover{filter:brightness(1.08)}.ch-run.stop{background:#e2603f;border-bottom-color:#8a3220;color:#fff}
+.ch-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px;align-items:start}
+.ch-canvas{display:block;width:100%;height:auto;aspect-ratio:760/470;border-radius:16px;border:3px solid #2c3a5e;background:#12141f;image-rendering:pixelated}
+.ch-hud{display:flex;gap:14px;align-items:center;margin:10px 2px;color:#b9c6e2;font-size:14px;flex-wrap:wrap}
+.ch-hp{position:relative;flex:0 0 190px;height:20px;border-radius:10px;background:#0f1730;border:1px solid #34466e;overflow:hidden}.ch-hp i{display:block;height:100%;background:linear-gradient(90deg,#ff5a6a,#ff8a5a);transition:width .2s}.ch-hp b{position:absolute;inset:0;text-align:center;font-size:12px;line-height:18px;color:#fff}
+.ch-gold,.ch-ticks{background:#182240;border:1px solid #33466e;border-radius:10px;padding:4px 10px;color:#e6edf9}
+.ch-goals{list-style:none;margin:0;padding:12px 14px;background:#182240;border:1px solid #33466e;border-radius:14px;display:grid;gap:6px}
+.ch-goals li{display:flex;gap:10px;color:#c3cee2;font-size:15px}.ch-goals b{width:20px;text-align:center;color:#9fb2d6}.ch-goals li.ok{color:#fff}.ch-goals li.ok b{color:#5fe0b5}.ch-goals li.bonus b{color:#8a7a3a}.ch-goals li.bonus.ok b{color:#ffd34d}
+.ch-story{background:#182240;border:1px solid #33466e;border-left:5px solid #7c5cf0;border-radius:14px;padding:12px 14px;margin-bottom:12px}.ch-story strong{color:#c9b8ff}.ch-story p{margin:4px 0 0;color:#d5def0;line-height:1.5;font-size:15px}
+.ch-editor{display:flex;background:#0c1224;border:2px solid #34466e;border-radius:14px;overflow:hidden;font:15px/1.6 ui-monospace,"DejaVu Sans Mono",Consolas,monospace;max-height:420px;overflow-y:auto}
+.ch-editor:focus-within{border-color:#7c5cf0}
+.ch-gutter{margin:0;padding:12px 0;min-width:44px;text-align:right;color:#56648a;background:#0a0f1e;user-select:none;font:inherit}
+.ch-gutter span{display:block;padding:0 10px}.ch-gutter span.run{background:#1f5c4a;color:#b8ffe6}.ch-gutter span.err{background:#7a2330;color:#ffd0d0}
+.ch-code{flex:1;min-width:0;overflow-x:auto}.ch-inner{position:relative;min-width:100%;width:max-content}
+.ch-hl,.ch-code textarea{margin:0;padding:12px 14px;font:inherit;white-space:pre;tab-size:4;border:0;overflow:hidden}.ch-hl{min-width:100%;width:max-content}.ch-code textarea{width:100%}
+.ch-hl{color:#e6edf9;pointer-events:none;min-height:260px}
+.ch-code textarea{position:absolute;inset:0;height:100%;resize:none;background:transparent;color:transparent;caret-color:#ffd34d;outline:0}
+.ch-code textarea::selection{background:rgba(124,92,240,.45)}
+.ch-hl .k{color:#ff8ad4;font-weight:700}.ch-hl .s{color:#b9f18c}.ch-hl .n{color:#ffb86b}.ch-hl .c{color:#6d7ba3;font-style:italic}.ch-hl .h{color:#7fe3c8;font-weight:700}.ch-hl .m{color:#8fc7ff}
+.ch-actions{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+.ch-message{min-height:46px;border-radius:14px;padding:12px 14px;background:#182240;border:1px solid #33466e;color:#d5def0;line-height:1.5}
+.ch-message.error{background:#3a1820;border-color:#a3404f;color:#ffd9d9}.ch-message.hint{background:#2f2a12;border-color:#8a7a2a;color:#fff0b8}.ch-message.run{border-color:#22b07d}
+.ch-win h2{margin:0;color:#ffd34d}.ch-stars{font-size:40px;color:#ffd34d;margin:2px 0;letter-spacing:4px}.ch-win p{margin:4px 0}
+.ch-docs{margin-top:14px}.ch-docs h3{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#9fb2d6;margin:0 0 8px}
+.ch-doc{display:grid;gap:2px;width:100%;text-align:left;background:#141d36;border:1px solid #2c3a5e;border-radius:11px;padding:8px 12px;margin-bottom:6px;color:#e6edf9}
+.ch-doc:hover{border-color:#7fe3c8}.ch-doc code{font:14px ui-monospace,"DejaVu Sans Mono",monospace;color:#8fc7ff}.ch-doc span{font-size:13px;color:#b9c6e2}
+@media(max-width:980px){.ch-grid{grid-template-columns:1fr}.ch-chapter{grid-template-columns:1fr}}
+@media(max-width:560px){#codehero{padding:14px 10px;border-radius:16px}.ch-hp{flex-basis:130px}}
+/* сюжет, мана, боссы */
+.ch-tale{color:#b9c6e2;font-size:13.5px;line-height:1.5;margin:6px 0 0;font-style:italic}
+.ch-win .ch-tale{font-size:15px;color:#ffe9b0}
+.ch-mana{display:flex;gap:5px;align-items:center;background:#182240;border:1px solid #33466e;border-radius:10px;padding:4px 10px;color:#e6edf9}
+.ch-mana[hidden]{display:none}
+.ch-mana i{width:14px;height:14px;border-radius:50%;background:#26335a;border:2px solid #3b4d78}
+.ch-mana i.on{background:#6fb7ff;border-color:#bfe0ff;box-shadow:0 0 8px #6fb7ff}
+.ch-docs{max-height:330px;overflow-y:auto}
+.ch-editor,.ch-code,.ch-docs{scrollbar-color:#3b4d78 #0c1224;scrollbar-width:thin}
+.ch-editor::-webkit-scrollbar,.ch-code::-webkit-scrollbar,.ch-docs::-webkit-scrollbar{width:10px;height:10px;background:#0c1224}
+.ch-editor::-webkit-scrollbar-thumb,.ch-code::-webkit-scrollbar-thumb,.ch-docs::-webkit-scrollbar-thumb{background:#3b4d78;border-radius:6px}
+.ch-editor::-webkit-scrollbar-corner,.ch-code::-webkit-scrollbar-corner{background:#0c1224}

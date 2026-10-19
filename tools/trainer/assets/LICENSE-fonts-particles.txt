@@ -1,0 +1,3 @@
+Russo One — шрифт Jovanny Lemonad, лицензия SIL Open Font License 1.1 (https://openfontlicense.org).
+Файл russo.ttf получен из репозитория google/fonts.
+Kenney Particle Pack — лицензия CC0 (kenney.nl), файлы p_*.png.
