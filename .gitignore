@@ -16,3 +16,4 @@ video/
 *.wav
 tools/video/fonts/
 tools/video/.gpu-profile/
+.claude/
