@@ -10,7 +10,12 @@
     stop(); const run = alive, {root, player} = ctx;
     // ключ входа хранится во вкладке: после обновления страницы пустят обратно, чужой вход с тем же именем — нет
     let me, was = ''; try { was = sessionStorage.getItem('school4-bt-token') || ''; } catch {}
-    try { me = await API('join', {className: player.className, name: player.name, token: was}); try { sessionStorage.setItem('school4-bt-token', me.token); } catch {} } catch (e) { alert('Не удалось войти в игру: ' + e.message); ctx.leave(); return; }
+    try { me = await API('join', {className: player.className, name: player.name, token: was}); try { sessionStorage.setItem('school4-bt-token', me.token); } catch {} } catch (e) {
+      // Без системного окна alert: оно блокирует всю страницу. Показываем причину и сами пробуем ещё раз через 5 секунд.
+      const box = h('section', 'bt2'), msg = h('div', 'bt2-wait', 'Не удалось войти в игру: ' + e.message), row = h('div', 'bt2-top');
+      let left = 5; const note = h('p', 'p-note', ''), tickJoin = setInterval(() => { note.textContent = `Повторим через ${left} с…`; if (left-- <= 0) { clearInterval(tickJoin); if (run === alive) student(ctx); } }, 1000);
+      row.append(btn('Попробовать сейчас', 'p-primary', () => { clearInterval(tickJoin); student(ctx); }), btn('← К играм', 'p-small', () => { clearInterval(tickJoin); stop(); ctx.leave(); }));
+      box.append(msg, note, row); root.replaceChildren(box); return; }
     Sound.init();
     const page = h('section', 'bt2'), top = h('div', 'bt2-top'), stage = h('div', 'bt2-stage'), main = h('div', 'bt2-main'), side = h('aside', 'bt2-side'), toasts = h('div', 'bt2-toasts'), pause = h('div', 'bt2-pause');
     const back = btn('← К играм', 'p-small', () => { stop(); ctx.leave(); }); back.dataset.act = 'bt-back';

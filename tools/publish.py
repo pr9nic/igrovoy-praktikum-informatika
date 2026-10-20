@@ -59,7 +59,7 @@ def validate(data,source):
             require(pr['apiSlug']=='trainer-%d-practicum'%data['grade'],'practicum.apiSlug: trainer-КЛАСС-practicum')
             require(isinstance(pr['godotHost'],str) and re.fullmatch(r'[a-z][a-z0-9-]{2,63}',pr['godotHost']) and (SITE/'courses'/pr['godotHost']/'game'/'index.html').is_file(),'practicum.godotHost: slug опубликованной игры на Godot')
             require(isinstance(pr['godotProject'],str) and re.fullmatch(r'[a-z][a-z0-9-]{1,40}',pr['godotProject']) and (ROOT/'godot'/pr['godotProject']/'export'/'index.pck').is_file(),'practicum.godotProject: нет сборки')
-            require(isinstance(pr['games'],list) and 1<=len(pr['games'])<=30,'practicum.games: 1–30 игр');ids=set()
+            require(isinstance(pr['games'],list) and 1<=len(pr['games'])<=40,'practicum.games: 1–40 игр');ids=set()
             for g in pr['games']:
                 require(isinstance(g,dict) and set(g)-{'url'}=={'id','title','genre','about','art','color','levels','minutes','unit','params'},'Игра практикума: неверный набор полей')
                 require('url' not in g or (isinstance(g['url'],str) and re.fullmatch(r'/courses/[a-z][a-z0-9-]{2,63}/',g['url']) and ((SITE/g['url'].strip('/')/'index.html').is_file() or (ROOT/'build'/g['url'].split('/')[2]/'index.html').is_file())),'Игра практикума: url ведёт на несуществующее задание')

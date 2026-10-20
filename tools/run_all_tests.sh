@@ -9,6 +9,8 @@ run "Машина Тьюринга" node tools/lab/tests/turing.test.js
 run "Сортировочная горка" node tools/lab/tests/sortyard.test.js
 run "Шифровальня" node tools/lab/tests/cipher.test.js
 run "Архиватор" node tools/lab/tests/archiver.test.js
+run "Карта дорог" node tools/lab/tests/graphs.test.js
+run "Черепаха" node tools/lab/tests/turtle.test.js
 run "Герой кода: уровни и решения" node tools/codehero/tests/levels.test.js
 run "Практикум: сервер" python3 tools/practicum/tests/practicum_api_test.py
 run "Битва класса: логика клиента" node tools/practicum/tests/battle_logic.test.js

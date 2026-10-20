@@ -40,7 +40,7 @@ await b.size(390, 844); await b.sleep(300); b.check('на телефоне не�
 const WHO = {slug: 'trainer-8-practicum', className: '8 «Б»', name: 'Кодов Герой'};
 await b.send('Page.navigate', {url: BASE + '/courses/game-8-practicum/'}); await b.ev("await waitFor(()=>$('.p-login form'));");
 await b.ev(`$('.p-login select').value='${WHO.className}';$('.p-login select').dispatchEvent(new Event('change'));$('[data-field=name]').value='${WHO.name}';$('.p-login form').requestSubmit();await waitFor(()=>$('.p-grid'));`);
-b.check('практикум: «Герой кода» стоит первым в списке, всего пятнадцать игр', await b.ev("return document.querySelectorAll('.p-card').length===15&&/Герой кода/.test($('.p-card h3').textContent)"));
+b.check('практикум: «Герой кода» стоит первым в списке, всего двадцать пять игр', await b.ev("return document.querySelectorAll('.p-card').length===25&&/Герой кода/.test($('.p-card h3').textContent)"));
 await b.ev("document.querySelector('[data-play=code]').click();"); const F = "document.querySelector('.p-player iframe').contentWindow";
 await b.ev(`await waitFor(()=>${F}.codehero&&${F}.document.querySelector('.ch-map'),30000);`);
 b.check('в практикуме у ученика свой чистый прогресс', await b.ev(`return ${F}.document.querySelectorAll('.ch-node.done').length===0&&/embed=1/.test(${F}.location.search)&&/player=g8/.test(${F}.location.search)`));
