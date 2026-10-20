@@ -21,17 +21,29 @@ const MELEE := {
 	"hammer": {"title": "Молот", "about": "медленный, бьёт сквозь щиты", "dmg": 32.0, "time": 0.34, "cd": 0.22, "reach": 98.0, "tall": 100.0, "heavy": true},
 	"daggers": {"title": "Кинжалы", "about": "молниеносные; в спину — тройной урон", "dmg": 8.0, "time": 0.1, "cd": 0.0, "reach": 58.0, "tall": 56.0, "heavy": false},
 	"spear": {"title": "Копьё", "about": "достаёт врага издалека", "dmg": 12.0, "time": 0.22, "cd": 0.05, "reach": 132.0, "tall": 40.0, "heavy": false},
+	"whip": {"title": "Хлыст-кабель", "about": "длинный; третий удар серии — двойной", "dmg": 10.0, "time": 0.24, "cd": 0.04, "reach": 150.0, "tall": 50.0, "heavy": false},
+	"ram": {"title": "Щит-таран", "about": "держит удары спереди, отбрасывает и оглушает", "dmg": 16.0, "time": 0.26, "cd": 0.12, "reach": 72.0, "tall": 80.0, "heavy": true},
 }
 const RANGED := {
 	"bow": {"title": "Лук", "about": "стрела летит дугой и пробивает одного врага", "dmg": 11.0, "cd": 0.5, "speed": 900.0, "grav": 520.0, "pierce": 1, "shot": "arrow", "heavy": false},
 	"crossbow": {"title": "Арбалет", "about": "мощный болт: пробивает троих и щиты", "dmg": 22.0, "cd": 1.05, "speed": 1350.0, "grav": 0.0, "pierce": 3, "shot": "arrow", "heavy": true},
 	"staff": {"title": "Посох", "about": "быстрые огненные шары", "dmg": 7.0, "cd": 0.36, "speed": 820.0, "grav": 0.0, "pierce": 0, "shot": "orb", "heavy": false},
+	"boomerang": {"title": "Бумеранг", "about": "пролетает сквозь врагов и возвращается", "dmg": 12.0, "cd": 0.3, "speed": 760.0, "grav": 0.0, "pierce": 99, "shot": "boomer", "heavy": false},
 }
+# Навыки — третий слот (клавиша Q), у каждого своя перезарядка.
+const SKILLS := {
+	"grenade": {"title": "Граната-байт", "about": "летит дугой, взрыв ранит всех рядом и ломает треснувшие стены", "cd": 6.0, "icon": "p_fireball"},
+	"turret": {"title": "Турель-антивирус", "about": "8 секунд стреляет по ближайшему врагу", "cd": 12.0, "icon": "p_term_on"},
+	"ice": {"title": "Ледяной щит", "about": "отражает следующий удар и замораживает врага", "cd": 10.0, "icon": "p_cell"},
+	"hook": {"title": "Крюк", "about": "притягивает врага и оглушает его", "cd": 7.0, "icon": "p_key"},
+}
+const WEAPON_ART := {"w_whip": "w_spear", "w_ram": "w_hammer", "w_boomerang": "w_daggers"}
+const WEAPON_TINT := {"w_whip": Color(0.85, 0.55, 1.0), "w_ram": Color(0.55, 0.95, 1.0), "w_boomerang": Color(1.0, 0.8, 0.4)}
 const KITS := [
-	{"title": "Мечник", "melee": "sword", "ranged": "bow", "about": "Меч и лук: надёжно в любом биоме"},
-	{"title": "Громила", "melee": "hammer", "ranged": "crossbow", "about": "Молот и арбалет: пробивают щиты"},
-	{"title": "Тень", "melee": "daggers", "ranged": "staff", "about": "Кинжалы и посох: заходи врагам за спину"},
-	{"title": "Копейщик", "melee": "spear", "ranged": "bow", "about": "Копьё и лук: держи врагов на расстоянии"},
+	{"title": "Мечник", "melee": "sword", "ranged": "bow", "skill": "grenade", "about": "Меч и лук: надёжно в любом биоме"},
+	{"title": "Громила", "melee": "hammer", "ranged": "crossbow", "skill": "turret", "about": "Молот и арбалет: пробивают щиты"},
+	{"title": "Тень", "melee": "daggers", "ranged": "staff", "skill": "hook", "about": "Кинжалы и посох: заходи врагам за спину"},
+	{"title": "Копейщик", "melee": "spear", "ranged": "bow", "skill": "ice", "about": "Копьё и лук: держи врагов на расстоянии"},
 ]
 # Мутации: одна на выбор после каждого этапа.
 const PERKS := [
@@ -111,6 +123,17 @@ var melee := "sword"
 var ranged := "bow"
 var flasks := 2
 var flasks_max := 2
+var skill := ""
+var skill_cd := 0.0
+var turrets: Array = []
+var ice_t := 0.0             # ледяной щит ждёт удара
+var curse := 0               # проклятие: столько побед осталось, пока любой удар смертелен
+var combo := 0
+var combo_t := 0.0
+var swing_mult := 1.0
+var guard_t := 0.0           # щит-таран поднят
+var wall_hits := {}
+var boomer_out := false
 var bytes := 0
 var cells_n := 0
 var scrolls := 0
@@ -232,10 +255,17 @@ func _take_kit(k: int) -> void:
 		return
 	melee = KITS[k]["melee"]
 	ranged = KITS[k]["ranged"]
+	skill = KITS[k]["skill"]
+	skill_cd = 0.0
+	curse = 0
 	sfx.emit("deliver")
 	_enter_level(0, "grove")
 
 func _reset_scene() -> void:
+	turrets = []
+	wall_hits = {}
+	boomer_out = false
+	ice_t = 0.0
 	foes = []
 	shots = []
 	bombs = []
@@ -276,6 +306,9 @@ func _load_map(m: Dictionary) -> void:
 				_spawn(th["kind"], at.x, at.y, k, th.get("elite", false))
 			"boss":
 				_spawn_boss(m["boss"], at.x, at.y)
+			"cells":
+				for i in 6:
+					drops.append({"x": at.x + (i - 2.5) * 12.0, "y": at.y - 18.0, "vy": 0.0, "vx": 0.0, "kind": "cell", "rest": true})
 			"gold":
 				for i in 5:
 					drops.append({"x": at.x + (i - 2) * 14.0, "y": at.y - 16.0, "vy": 0.0, "vx": 0.0, "kind": "byte", "rest": true})
@@ -387,7 +420,7 @@ func _tile(tx: int, ty: int) -> String:
 
 func _solid_t(tx: int, ty: int) -> bool:
 	var c := _tile(tx, ty)
-	return c == "#" or c == "K"
+	return c == "#" or c == "K" or c == "B"
 
 func _solid_px(x: float, y: float) -> bool:
 	return _solid_t(int(floorf(x / T)), int(floorf(y / T)))
@@ -451,7 +484,7 @@ func _ground_at(x: float, feet: float) -> bool:
 	var tx := int(floorf(x / T))
 	var ty := int(floorf((feet + 2.0) / T))
 	var c := _tile(tx, ty)
-	return c == "#" or c == "=" or c == "K"
+	return c == "#" or c == "=" or c == "K" or c == "B"
 
 func _sees(a: Vector2, b: Vector2) -> bool:
 	# Прямая видимость: на отрезке нет камня.
@@ -488,6 +521,11 @@ func tick(delta: float) -> void:
 	if music and music_on and not music.playing:
 		music.play()
 	_tick_lifts(delta)
+	skill_cd = maxf(0.0, skill_cd - delta)
+	ice_t = maxf(0.0, ice_t - delta)
+	combo_t = maxf(0.0, combo_t - delta)
+	guard_t = maxf(0.0, guard_t - delta)
+	_tick_turrets(delta)
 	_tick_player(delta)
 	_tick_foes(delta)
 	_tick_boss(delta)
@@ -656,10 +694,19 @@ func _player_attack(delta: float) -> void:
 	for f in foes.duplicate():
 		if not swing_hit.has(f) and not f["hidden"] and reach.intersects(_foe_rect(f)):
 			swing_hit.append(f)
-			_hit_foe(f, m["dmg"], face, m["heavy"])
+			_hit_foe(f, m["dmg"] * swing_mult, face, m["heavy"])
+			if melee == "ram" and foes.has(f) and f["kind"] != "turret":
+				f["vx"] = face * 420.0
+				f["stun"] = maxf(f["stun"], 0.6)
 	if boss.size() > 0 and not boss["dead"] and not swing_hit.has(boss) and reach.intersects(_boss_rect()):
 		swing_hit.append(boss)
-		_hit_boss(m["dmg"], face, m["heavy"])
+		_hit_boss(m["dmg"] * swing_mult, face, m["heavy"])
+	if not swing_hit.has("wall"):
+		for tx in range(int(floorf(reach.position.x / T)), int(floorf(reach.end.x / T)) + 1):
+			for ty in range(int(floorf(reach.position.y / T)), int(floorf(reach.end.y / T)) + 1):
+				if _tile(tx, ty) == "B" and not swing_hit.has("wall"):
+					swing_hit.append("wall")
+					_hit_wall(tx, ty)
 
 func _foe_rect(f: Dictionary) -> Rect2:
 	return Rect2(f["x"] - f["w"] / 2.0, f["y"] - f["h"], f["w"], f["h"])
@@ -676,6 +723,23 @@ func _dmg_mult() -> float:
 func _damage(amount: float, at: Vector2, force: bool = false, from: Dictionary = {}) -> bool:
 	if god or mode != "zone" or (not force and (hurt > 0.0 or roll > 0.0)):
 		return false
+	if not force and ice_t > 0.0:
+		ice_t = 0.0
+		hurt = 0.4
+		_pop(px, py - 80.0, "ЩИТ!", Color("9ff0ff"))
+		burst(Vector2(px - cam.x, py - 30.0 - cam.y), Color("9ff0ff"), 20, 300.0)
+		if from.has("stun"):
+			from["stun"] = 2.0
+			from["frozen"] = 2.0
+		sfx.emit("turn")
+		return false
+	if not force and melee == "ram" and guard_t > 0.0 and from.has("x") and int(signf(from["x"] - px)) == face:
+		_pop(px + face * 30.0, py - 70.0, "БЛОК", Color("7df9ff"))
+		sfx.emit("turn")
+		return false
+	if curse > 0 and not force:
+		amount = maxf(amount, hp)
+		_pop(px, py - 90.0, "ПРОКЛЯТИЕ", Color("ff4a6a"))
 	hp -= amount
 	hurt = 0.9
 	shake = 0.8
@@ -731,6 +795,11 @@ func _hit_foe(f: Dictionary, amount: float, dir: int, heavy: bool) -> void:
 	if f["hp"] <= 0.0:
 		foes.erase(f)
 		kills += 1
+		if curse > 0:
+			curse -= 1
+			if curse == 0:
+				_say("Проклятие снято! Удары снова не смертельны.")
+				burst(Vector2(px - cam.x, py - 40.0 - cam.y), Color("ffd34d"), 30, 360.0, "p_star", 28.0)
 		burst(Vector2(f["x"] - cam.x, f["y"] - f["h"] / 2.0 - cam.y), Color("b48cff"), 18, 360.0)
 		var n: int = FOES[f["kind"]]["bytes"] * (3 if f["elite"] else 1)
 		if _has("magnet"):
@@ -1264,6 +1333,45 @@ func _hit_boss(amount: float, dir: int, heavy: bool) -> void:
 
 func _tick_shots(delta: float) -> void:
 	for s in shots.duplicate():
+		if s.get("kind", "") == "grenade":
+			s["vy"] += 1400.0 * delta
+			s["x"] += s["vx"] * delta
+			s["y"] += s["vy"] * delta
+			s["life"] -= delta
+			var touch := false
+			for f in foes:
+				if not f["hidden"] and _foe_rect(f).grow(8.0).has_point(Vector2(s["x"], s["y"])):
+					touch = true
+			if s["life"] <= 0.0 or touch or _solid_px(s["x"], s["y"]) or (not boss.is_empty() and not boss["dead"] and _boss_rect().has_point(Vector2(s["x"], s["y"]))):
+				shots.erase(s)
+				_explode(s["x"], s["y"], 135.0, s["dmg"])
+			continue
+		if s.get("kind", "") == "boomer":
+			# Бумеранг летит вперёд, потом разворачивается к герою; на обратном пути снова ранит.
+			s["life"] -= delta
+			if not s["ret"] and (Vector2(s["x"], s["y"]).distance_to(s["from"]) > 430.0 or _solid_px(s["x"] + s["vx"] * delta, s["y"])):
+				s["ret"] = true
+				s["hit"] = []
+			if s["ret"]:
+				var to := (Vector2(px, py - 40.0) - Vector2(s["x"], s["y"]))
+				if to.length() < 34.0 or s["life"] <= 0.0:
+					shots.erase(s)
+					boomer_out = false
+					continue
+				var v := to.normalized() * 900.0
+				s["vx"] = v.x
+				s["vy"] = v.y
+			s["x"] += s["vx"] * delta
+			s["y"] += s["vy"] * delta
+			s["spin"] = s.get("spin", 0.0) + delta * 18.0
+			for f in foes.duplicate():
+				if not f["hidden"] and not s["hit"].has(f) and _foe_rect(f).grow(10.0).has_point(Vector2(s["x"], s["y"])):
+					s["hit"].append(f)
+					_hit_foe(f, s["dmg"], int(signf(s["vx"])), false)
+			if not boss.is_empty() and not boss["dead"] and not s["hit"].has(boss) and _boss_rect().has_point(Vector2(s["x"], s["y"])):
+				s["hit"].append(boss)
+				_hit_boss(s["dmg"], int(signf(s["vx"])), false)
+			continue
 		s["vy"] += s.get("grav", 0.0) * delta
 		s["x"] += s["vx"] * delta
 		s["y"] += s["vy"] * delta
@@ -1352,6 +1460,119 @@ func _tick_drops(delta: float) -> void:
 					_pop(px, py - 70.0, "+25", Color("5fe0b5"))
 			burst(Vector2(d["x"] - cam.x, d["y"] - cam.y), Color("ffd34d") if d["kind"] == "byte" else Color("7df9ff"), 3, 120.0)
 
+# ---------- навыки, стены, проклятие ----------
+
+func _use_skill() -> void:
+	if skill == "" or skill_cd > 0.0 or roll > 0.0:
+		return
+	skill_cd = SKILLS[skill]["cd"]
+	match skill:
+		"grenade":
+			shots.append({"kind": "grenade", "x": px + face * 20.0, "y": py - 50.0, "vx": face * 340.0 + vx * 0.4, "vy": -440.0, "dmg": 30.0, "own": "p", "life": 2.5, "hit": [], "pierce": 0})
+		"turret":
+			turrets.append({"x": px + face * 44.0, "y": py, "t": 8.0, "cd": 0.0})
+			_say("Турель-антивирус установлена на 8 секунд.")
+		"ice":
+			ice_t = 6.0
+			_pop(px, py - 90.0, "ЛЕДЯНОЙ ЩИТ", Color("9ff0ff"))
+		"hook":
+			var best := {}
+			var bd := 430.0
+			for f in foes:
+				var d: float = (f["x"] - px) * face
+				if not f["hidden"] and f["kind"] != "turret" and d > 0.0 and d < bd and absf(f["y"] - py) < 130.0 and _sees(Vector2(px, py - 30.0), Vector2(f["x"], f["y"] - f["h"] / 2.0)):
+					best = f
+					bd = d
+			if best.is_empty():
+				_pop(px + face * 60.0, py - 70.0, "мимо", MUTED)
+				skill_cd = 1.0
+			else:
+				beams.append({"line": [Vector2(px, py - 40.0), Vector2(best["x"], best["y"] - best["h"] / 2.0)], "t": 0.3, "color": Color(0.9, 0.85, 0.5, 0.9), "w": 4.0})
+				var nx: float = px + face * (30.0 + best["w"] / 2.0)
+				if not _box_hits(nx, best["y"], best["w"], best["h"]):
+					best["x"] = nx
+				best["stun"] = maxf(best["stun"], 1.2)
+				best["seen"] = true
+	sfx.emit("turn")
+
+func _tick_turrets(delta: float) -> void:
+	for t in turrets.duplicate():
+		t["t"] -= delta
+		t["cd"] -= delta
+		if t["t"] <= 0.0:
+			turrets.erase(t)
+			continue
+		if t["cd"] > 0.0:
+			continue
+		var eye := Vector2(t["x"], t["y"] - 40.0)
+		var best := {}
+		var bd := 540.0
+		for f in foes:
+			var d := eye.distance_to(Vector2(f["x"], f["y"] - f["h"] / 2.0))
+			if not f["hidden"] and d < bd and _sees(eye, Vector2(f["x"], f["y"] - f["h"] / 2.0)):
+				best = f
+				bd = d
+		if not best.is_empty():
+			var dv := (Vector2(best["x"], best["y"] - best["h"] / 2.0) - eye).normalized()
+			shots.append({"x": eye.x, "y": eye.y, "vx": dv.x * 760.0, "vy": dv.y * 760.0, "dmg": 6.0, "own": "p", "life": 1.0, "grav": 0.0, "pierce": 0, "hit": [], "kind": "orb"})
+			t["cd"] = 0.45
+
+func _explode(x: float, y: float, r: float, dmg: float) -> void:
+	burst(Vector2(x - cam.x, y - cam.y), Color("ff9a3a"), 34, 460.0)
+	beams.append({"rect": Rect2(x - r, y - r, 2.0 * r, 2.0 * r), "t": 0.2, "color": Color(1.0, 0.6, 0.2, 0.35)})
+	shake = 0.6
+	sfx.emit("error")
+	for f in foes.duplicate():
+		if not f["hidden"] and Vector2(f["x"], f["y"] - f["h"] / 2.0).distance_to(Vector2(x, y)) < r + f["w"] / 2.0:
+			_hit_foe(f, dmg, int(signf(f["x"] - x)), true)
+	if not boss.is_empty() and not boss["dead"] and Vector2(boss["x"], boss["y"] - boss["h"] / 2.0).distance_to(Vector2(x, y)) < r + boss["w"] / 2.0:
+		_hit_boss(dmg, int(signf(boss["x"] - x)), true)
+	for tx in range(int(floorf((x - r) / T)), int(floorf((x + r) / T)) + 1):
+		for ty in range(int(floorf((y - r) / T)), int(floorf((y + r) / T)) + 1):
+			if _tile(tx, ty) == "B":
+				_break_wall(tx, ty)
+
+func _hit_wall(tx: int, ty: int) -> void:
+	var key := tx
+	wall_hits[key] = int(wall_hits.get(key, 0)) + 1
+	burst(Vector2(tx * T + T / 2.0 - cam.x, ty * T + T / 2.0 - cam.y), Color(0.7, 0.65, 0.6), 10, 220.0, "p_smoke")
+	shake = 0.3
+	if wall_hits[key] >= 3:
+		_break_wall(tx, ty)
+	else:
+		_pop(tx * T + T / 2.0, ty * T, "трещит! %d / 3" % wall_hits[key], Color("ffd34d"))
+		sfx.emit("drop")
+
+func _break_wall(tx: int, ty: int) -> void:
+	# Ломается вся трещина в этом столбце сразу.
+	var y := ty
+	while y > 0 and _tile(tx, y - 1) == "B":
+		y -= 1
+	while y < mh and _tile(tx, y) == "B":
+		var r: String = rows[y]
+		rows[y] = r.substr(0, tx) + " " + r.substr(tx + 1)
+		burst(Vector2(tx * T + T / 2.0 - cam.x, y * T + T / 2.0 - cam.y), Color(0.75, 0.7, 0.62), 14, 300.0, "p_smoke")
+		y += 1
+	wall_hits.erase(tx)
+	shake = 0.8
+	_say("Стена рухнула — за ней тайная комната!")
+	sfx.emit("win")
+
+func _open_cursed(t: Dictionary) -> void:
+	t["used"] = true
+	_open_chest(t)
+	scrolls += 1
+	hp_max *= 1.12
+	hp = hp_max
+	for i in 8:
+		drops.append({"x": t["x"], "y": t["y"] - 40.0, "vy": rng.randf_range(-520, -320), "vx": rng.randf_range(-160, 160), "kind": "cell", "rest": false})
+	for i in 14:
+		drops.append({"x": t["x"], "y": t["y"] - 40.0, "vy": rng.randf_range(-480, -260), "vx": rng.randf_range(-200, 200), "kind": "byte", "rest": false})
+	curse = 10
+	flash = 0.6
+	burst(Vector2(t["x"] - cam.x, t["y"] - 40.0 - cam.y), Color("ff2a5a"), 40, 420.0)
+	_say("Проклятие! Оружие, свиток и клетки — твои, но следующие 10 побед любой удар смертелен.")
+
 # ---------- предметы, терминалы, двери, лавка ----------
 
 func _near() -> Dictionary:
@@ -1376,6 +1597,8 @@ func _interact() -> void:
 			_open_quiz(t)
 		"chest":
 			_open_chest(t)
+		"cchest":
+			_open_cursed(t)
 		"scroll":
 			t["used"] = true
 			scrolls += 1
@@ -1426,8 +1649,15 @@ func _open_chest(t: Dictionary) -> void:
 	for id in RANGED:
 		if id != ranged:
 			pool.append(["r", id])
+	for id in SKILLS:
+		if id != skill:
+			pool.append(["s", id])
 	var pick: Array = pool[rng.randi() % pool.size()]
-	if pick[0] == "m":
+	if pick[0] == "s":
+		skill = pick[1]
+		skill_cd = 0.0
+		_say("Новый навык: %s — %s. Клавиша Q." % [SKILLS[skill]["title"], SKILLS[skill]["about"]])
+	elif pick[0] == "m":
 		melee = pick[1]
 		_say("Новое оружие: %s — %s." % [MELEE[melee]["title"], MELEE[melee]["about"]])
 	else:
@@ -1453,6 +1683,9 @@ func _open_shop() -> void:
 			weap.append({"type": "r", "id": id, "title": RANGED[id]["title"], "about": RANGED[id]["about"], "cost": int(30 * k)})
 	weap.shuffle()
 	offers.append_array(weap.slice(0, 2))
+	var sk := SKILLS.keys().filter(func(x): return x != skill)
+	var sid: String = sk[rng.randi() % sk.size()]
+	offers.append({"type": "s", "id": sid, "title": SKILLS[sid]["title"], "about": SKILLS[sid]["about"], "cost": int(35 * k)})
 	offers.append({"type": "food", "title": "Жареный окорок", "about": "+50 здоровья", "cost": int(15 * k)})
 	offers.append({"type": "flask", "title": "Наполнить флягу", "about": "+1 заряд фляги", "cost": int(25 * k)})
 	offers.append({"type": "scroll", "title": "Свиток силы", "about": "+12 % урона и здоровья", "cost": int(70 * k)})
@@ -1473,6 +1706,9 @@ func _buy_offer(i: int) -> void:
 			melee = o["id"]
 		"r":
 			ranged = o["id"]
+		"s":
+			skill = o["id"]
+			skill_cd = 0.0
 		"food":
 			hp = minf(hp_max, hp + 50.0)
 		"flask":
@@ -1643,10 +1879,28 @@ func _zone_key(k: int) -> void:
 			jump_buf = 0.12
 	elif k == KEY_X or k == KEY_J:
 		if swing <= 0.0 and swing_cd <= 0.0 and roll <= 0.0 and not climbing:
+			swing_mult = 1.0
+			if melee == "whip":
+				combo = combo + 1 if combo_t > 0.0 else 1
+				combo_t = 0.9
+				if combo >= 3:
+					swing_mult = 2.2
+					combo = 0
+					_pop(px + face * 80.0, py - 80.0, "СЕРИЯ ×2", Color("c08bff"))
+			if melee == "ram":
+				guard_t = 0.55
 			swing = MELEE[melee]["time"]
 			swing_cd = MELEE[melee]["time"] + MELEE[melee]["cd"]
 			swing_hit = []
 			sfx.emit("turn")
+	elif k == KEY_Q or k == KEY_U:
+		_use_skill()
+	elif (k == KEY_C or k == KEY_K) and ranged == "boomerang":
+		if not boomer_out and roll <= 0.0 and not climbing:
+			boomer_out = true
+			var wb: Dictionary = RANGED[ranged]
+			shots.append({"x": px + face * 24.0, "y": py - 44.0, "vx": face * wb["speed"], "vy": 0.0, "dmg": wb["dmg"], "own": "p", "life": 3.0, "grav": 0.0, "pierce": 99, "hit": [], "kind": "boomer", "ret": false, "from": Vector2(px, py - 44.0)})
+			sfx.emit("click")
 	elif k == KEY_C or k == KEY_K:
 		if shot_cd <= 0.0 and roll <= 0.0 and not climbing:
 			var w: Dictionary = RANGED[ranged]
@@ -1718,6 +1972,19 @@ func _debug_key(k: int) -> void:
 		KEY_F2:
 			cells_n += 200
 			bytes += 300
+		KEY_BRACKETLEFT:
+			for sc in map.get("secrets", []):
+				if _tile(sc["x"], sc["y"]) == "B":
+					var room: Vector2i = sc["room"]
+					var out := -1 if sc["x"] == room.x * World.RW else 1
+					_teleport((sc["x"] + out * 2) * T + T / 2.0, (sc["y"] + 1) * T)
+					face = -out
+					return
+		KEY_BRACKETRIGHT:
+			for t in things:
+				if t["kind"] == "cchest" and not t["used"]:
+					_teleport(t["x"], t["y"])
+					return
 		KEY_F12:
 			# к низу ближайшей лестницы
 			for ty in range(mh - 2, 0, -1):
@@ -1776,7 +2043,10 @@ func debug() -> Dictionary:
 	var ladders := 0
 	for r in rows:
 		ladders += r.count("H")
-	return {"mode": mode, "stage": stage, "biome": biome, "visited": visited, "hp": int(hp), "hpMax": int(hp_max), "x": int(px), "y": int(py), "foes": foes.size(), "foeKinds": fk,
+	var walls := 0
+	for r in rows:
+		walls += r.count("B")
+	return {"skill": skill, "skillCd": snappedf(skill_cd, 0.1), "curse": curse, "turrets": turrets.size(), "walls": walls, "ice": ice_t > 0.0, "boomer": boomer_out, "mode": mode, "stage": stage, "biome": biome, "visited": visited, "hp": int(hp), "hpMax": int(hp_max), "x": int(px), "y": int(py), "foes": foes.size(), "foeKinds": fk,
 		"terms": ts, "things": kinds, "bytes": bytes, "cells": cells_n, "scrolls": scrolls, "perks": perks, "near": n.get("kind", ""), "melee": melee, "ranged": ranged,
 		"boss": {} if boss.is_empty() else {"kind": boss["kind"], "hp": int(boss["hp"]), "shield": boss["shield"], "dead": boss["dead"], "rage": boss["rage"]},
 		"right": quiz["opts"].find(quiz["a"]) if not quiz.is_empty() else -1, "quizDone": quiz.get("done", false), "kills": kills, "ups": meta["up"], "stars": done_stars,
@@ -1793,7 +2063,8 @@ func _spr(name: String, cx: float, feet: float, height: float, flip: bool = fals
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _weapon(name: String, hand: Vector2, angle: float, length: float, mod: Color = Color.WHITE) -> void:
-	var t: Texture2D = tex[name]
+	mod = mod * WEAPON_TINT.get(name, Color.WHITE)
+	var t: Texture2D = tex[WEAPON_ART.get(name, name)]
 	var h := length * t.get_height() / t.get_width()
 	draw_set_transform(hand, angle, Vector2(1.0, -1.0 if absf(angle) > PI / 2.0 else 1.0))
 	draw_texture_rect(t, Rect2(-length * 0.12, -h / 2.0, length, h), false, mod)
@@ -1854,6 +2125,12 @@ func draw_game() -> void:
 					_spr("p_ladder", r.position.x + T / 2.0, r.position.y + T + 2.0, T + 4.0)
 				"^":
 					draw_texture_rect(tex["p_spikes"], Rect2(r.position.x, r.position.y + T * 0.45, T + 1.0, T * 0.56), false)
+				"B":
+					draw_texture_rect_region(fill_t, r, Rect2((tx % 2) * half, (ty % 2) * half, half, half), Color(0.85, 0.8, 0.75))
+					var cx0 := r.position.x
+					var cy0 := r.position.y
+					draw_polyline(PackedVector2Array([Vector2(cx0 + 12, cy0), Vector2(cx0 + 22, cy0 + 16), Vector2(cx0 + 14, cy0 + 28), Vector2(cx0 + 26, cy0 + T)]), Color(0.08, 0.06, 0.05, 0.85), 3.0)
+					draw_polyline(PackedVector2Array([Vector2(cx0 + 22, cy0 + 16), Vector2(cx0 + 36, cy0 + 20), Vector2(cx0 + T, cy0 + 12)]), Color(0.08, 0.06, 0.05, 0.7), 2.0)
 				"K":
 					if _tile(tx, ty - 1) != "K":
 						_spr("p_kdoor", r.position.x + T / 2.0, r.position.y + T * 3.0, T * 3.0)
@@ -1879,6 +2156,10 @@ func draw_game() -> void:
 					text("✓" if t["state"] == "ok" else "✗", c + Vector2(0, -76.0), 22, Color("5fe0b5") if t["state"] == "ok" else Color("ff7a7a"), false)
 			"chest":
 				_spr("p_chest_open" if t["used"] else "p_chest", c.x, c.y + 4.0, 52.0 if not t["used"] else 62.0)
+			"cchest":
+				_spr("p_chest_open" if t["used"] else "p_chest", c.x, c.y + 4.0, 60.0 if not t["used"] else 70.0, false, Color(0.75, 0.3, 0.4) if not t["used"] else Color(0.5, 0.35, 0.4))
+				if not t["used"]:
+					text("ПРОКЛЯТЫЙ СУНДУК", c + Vector2(0, -78.0 + sin(time * 3.0) * 3.0), 12, Color("ff6a8a"))
 			"scroll":
 				if not t["used"]:
 					_spr("p_scroll", c.x, c.y - 6.0 + sin(time * 3.0) * 5.0, 56.0)
@@ -1937,6 +2218,13 @@ func draw_game() -> void:
 			else:
 				draw_circle(c, 9.0, Color(1.0, 0.55, 0.15, 0.9))
 				draw_circle(c, 5.0, Color("ffe08a"))
+		elif s.get("kind", "") == "grenade":
+			draw_circle(c, 11.0, Color("2a2a33"))
+			draw_circle(c + Vector2(3, -5), 4.0, Color("ff5a3a") if fmod(time * 12.0, 2.0) < 1.0 else Color("ffd34d"))
+		elif s.get("kind", "") == "boomer":
+			var a0: float = s.get("spin", 0.0)
+			draw_arc(c, 18.0, a0, a0 + 2.2, 10, Color("ffcf6a"), 6.0)
+			draw_arc(c, 18.0, a0 + PI, a0 + PI + 2.2, 10, Color("ffcf6a"), 6.0)
 		elif s.get("kind", "") == "wave":
 			draw_rect(Rect2(c.x - 16.0, c.y - 26.0, 32.0, 40.0), Color(1.0, 0.6, 0.3, 0.55))
 		elif s.get("kind", "") == "letter":
@@ -1953,12 +2241,27 @@ func draw_game() -> void:
 			draw_rect(Rect2(rct.position - cam, rct.size), Color(b["color"].r, b["color"].g, b["color"].b, b["color"].a * k))
 	for q in pops:
 		text(q["text"], Vector2(q["x"] - cam.x, q["y"] - cam.y), 20, Color(q["color"].r, q["color"].g, q["color"].b, minf(1.0, q["t"] * 3.0)))
+	for t in turrets:
+		var c := Vector2(t["x"] - cam.x, t["y"] - cam.y)
+		_spr("p_term_on", c.x, c.y + 4.0, 64.0, false, Color(0.7, 1.0, 0.8))
+		draw_rect(Rect2(c.x - 24.0, c.y - 76.0, 48.0 * t["t"] / 8.0, 5.0), Color("5fe0b5"))
 	_draw_hero()
+	if ice_t > 0.0:
+		draw_arc(Vector2(px - cam.x, py - 40.0 - cam.y), 46.0 + sin(time * 6.0) * 3.0, 0.0, TAU, 40, Color(0.6, 0.95, 1.0, 0.8), 3.0)
+	if curse > 0:
+		draw_arc(Vector2(px - cam.x, py - 40.0 - cam.y), 52.0, 0.0, TAU, 40, Color(1.0, 0.2, 0.35, 0.45 + 0.25 * sin(time * 8.0)), 2.0)
+	var crack := false
+	for dx in [-1, 1, 2, -2]:
+		for dy in [1, 2]:
+			if _tile(int(px / T) + dx, int((py - 1.0) / T) - dy + 1) == "B":
+				crack = true
 	if not _near().is_empty():
 		var n := _near()
-		var hint: String = {"term": "E — терминал", "bterm": "E — терминал", "kdoor": "E — дверь знаний", "chest": "E — открыть", "scroll": "E — взять свиток", "food": "E — съесть",
+		var hint: String = {"term": "E — терминал", "bterm": "E — терминал", "kdoor": "E — дверь знаний", "chest": "E — открыть", "cchest": "E — открыть (проклятие!)", "scroll": "E — взять свиток", "food": "E — съесть",
 			"shop": "E — торговец", "collector": "E — Коллекционер", "fountain": "E — фонтан", "door": "E — идти", "portal": "E — портал"}.get(n["kind"], "E")
 		text(hint, Vector2(px - cam.x, py - 128.0 - cam.y), 16, GOLD)
+	elif crack:
+		text("Стена треснула — ударь её трижды (X) или брось гранату", Vector2(px - cam.x, py - 120.0 - cam.y), 14, GOLD)
 	elif _on_ladder() and not climbing:
 		text("↑ / ↓ — лестница", Vector2(px - cam.x, py - 120.0 - cam.y), 14, MUTED)
 
@@ -2095,6 +2398,9 @@ func draw_lights(ci: CanvasItem) -> void:
 			"chest":
 				if not t["used"]:
 					glow(ci, c + Vector2(0, 26), 120.0, Color(1.0, 0.8, 0.3, 0.2 + 0.08 * sin(time * 3.0)))
+			"cchest":
+				if not t["used"]:
+					glow(ci, c + Vector2(0, 26), 160.0, Color(1.0, 0.15, 0.35, 0.3 + 0.1 * sin(time * 4.0)))
 	for d in drops:
 		if d["kind"] == "cell":
 			glow(ci, Vector2(d["x"] - cam.x, d["y"] - cam.y), 70.0, Color(0.3, 0.7, 1.0, 0.45))
@@ -2143,11 +2449,23 @@ func _hud() -> void:
 			if perks.has(p["id"]):
 				names.append(p["title"])
 		draw_string(font, Vector2(20, 706), "Мутации: " + ", ".join(names), HORIZONTAL_ALIGNMENT_LEFT, 640, 13, MUTED)
-	rr(Rect2(16, 62, 150, 64), Color(0.05, 0.07, 0.14, 0.8), 10)
+	rr(Rect2(16, 62, 200, 64), Color(0.05, 0.07, 0.14, 0.8), 10)
 	_weapon("w_" + melee, Vector2(30, 82), 0.0, 40.0)
-	draw_string(font, Vector2(78, 87), "X · " + MELEE[melee]["title"], HORIZONTAL_ALIGNMENT_LEFT, 90, 14, INK)
+	draw_string(font, Vector2(78, 87), "X · " + MELEE[melee]["title"], HORIZONTAL_ALIGNMENT_LEFT, 136, 14, INK)
 	_weapon("w_" + ranged, Vector2(30 if ranged != "bow" else 44, 108), 0.0, 40.0 if ranged != "bow" else 14.0)
-	draw_string(font, Vector2(78, 113), "C · " + RANGED[ranged]["title"], HORIZONTAL_ALIGNMENT_LEFT, 90, 14, INK)
+	draw_string(font, Vector2(78, 113), "C · " + RANGED[ranged]["title"], HORIZONTAL_ALIGNMENT_LEFT, 136, 14, INK)
+	if skill != "":
+		rr(Rect2(16, 130, 200, 38), Color(0.05, 0.07, 0.14, 0.8), 10)
+		var ic: Texture2D = tex[SKILLS[skill]["icon"]]
+		var k := 26.0 / maxf(ic.get_width(), ic.get_height())
+		var isz := Vector2(ic.get_width(), ic.get_height()) * k
+		draw_texture_rect(ic, Rect2(Vector2(36.0, 149.0) - isz / 2.0, isz), false, Color.WHITE if skill_cd <= 0.0 else Color(1, 1, 1, 0.4))
+		draw_string(font, Vector2(56, 153), "Q · " + SKILLS[skill]["title"], HORIZONTAL_ALIGNMENT_LEFT, 154, 13, INK if skill_cd <= 0.0 else MUTED)
+		if skill_cd > 0.0:
+			draw_rect(Rect2(56, 159, 150.0 * (1.0 - skill_cd / SKILLS[skill]["cd"]), 4.0), Color("7df9ff"))
+	if curse > 0:
+		rr(Rect2(440, 112, 400, 30), Color(0.35, 0.05, 0.12, 0.85), 10, Color("ff4a6a"), 2)
+		text("ПРОКЛЯТИЕ: ещё %d побед · любой удар смертелен" % curse, Vector2(640, 127), 15, Color("ffd0d8"))
 	draw_string(font, Vector2(690, 706), "X удар · C выстрел · Shift перекат · E действие · ↑↓ лестница · ↓+прыжок вниз · M карта", HORIZONTAL_ALIGNMENT_LEFT, 590, 12, Color(1, 1, 1, 0.45))
 	if mode == "zone":
 		_draw_minimap(big_map)
@@ -2307,6 +2625,8 @@ func _draw_kit() -> void:
 		draw_multiline_string(font, r.position + Vector2(16, 254), m["about"], HORIZONTAL_ALIGNMENT_LEFT, 260, 12, 2, MUTED)
 		draw_multiline_string(font_b, r.position + Vector2(16, 296), "C · " + w["title"], HORIZONTAL_ALIGNMENT_LEFT, 260, 14, 1, INK)
 		draw_multiline_string(font, r.position + Vector2(16, 314), w["about"], HORIZONTAL_ALIGNMENT_LEFT, 260, 12, 2, MUTED)
+		var sk: Dictionary = SKILLS[kit["skill"]]
+		draw_multiline_string(font_b, r.position + Vector2(16, 348), "Q · " + sk["title"], HORIZONTAL_ALIGNMENT_LEFT, 260, 13, 1, Color("7df9ff"))
 		hot.append([r, k])
 	text("Клавиши 1–4 или щелчок мышью", Vector2(640, 600), 16, GOLD, false)
 
@@ -2330,7 +2650,7 @@ func _draw_shop() -> void:
 	for i in offers.size():
 		var o: Dictionary = offers[i]
 		var can: bool = not o.get("sold", false) and bytes >= o["cost"] and not (o["type"] == "flask" and flasks >= flasks_max)
-		var icon: String = "w_" + o["id"] if o["type"] in ["m", "r"] else {"food": "p_food", "flask": "p_flask", "scroll": "p_scroll"}[o["type"]]
+		var icon: String = WEAPON_ART.get("w_" + o["id"], "w_" + o["id"]) if o["type"] in ["m", "r"] else (SKILLS[o["id"]]["icon"] if o["type"] == "s" else {"food": "p_food", "flask": "p_flask", "scroll": "p_scroll"}[o["type"]])
 		_card(Rect2(290 + (i % 3) * 320, 170 + (i / 3) * 210, 300, 190), i, o["title"], o["about"], "Продано" if o.get("sold", false) else "Цена: %d байтов" % o["cost"], Color("c98a2a"), can, icon)
 	var r := Rect2(540, 616, 200, 46)
 	rr(r, Color("243253"), 12)

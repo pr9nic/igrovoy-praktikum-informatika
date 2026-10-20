@@ -217,11 +217,29 @@ static func build(stage: int, biome: String, rng: RandomNumberGenerator) -> Dict
 			rooms[c]["locked"] = true
 	if stage >= 1 and dead_ends.size() > 2 and rng.randf() < 0.75:
 		rooms[dead_ends[2]]["kind"] = "shop"
+	# Тайные комнаты: тупик, вход в который закрыт трескающейся стеной B (3 удара или граната). Внутри — клетки, байты, свиток.
+	var secrets := []
+	for k in range(3, dead_ends.size()):
+		if secrets.size() >= (1 if stage < 2 else 2):
+			break
+		var c: Vector2i = dead_ends[k]
+		var l: Array = links.filter(func(q): return q[0] == c or q[1] == c)[0]
+		var other: Vector2i = l[0] if l[1] == c else l[1]
+		if other.y != c.y:
+			continue
+		rooms[c]["kind"] = "secret"
+		var wx: int = (c.x * RW) if other.x < c.x else (c.x * RW + RW - 1)
+		for y in range(RH - 4, RH - 1):
+			t[c.y * RH + y][wx] = "B"
+		secrets.append({"x": wx, "y": c.y * RH + RH - 2, "room": c})
 	var free := rooms.keys().filter(func(c): return rooms[c]["kind"] in ["path", "side"])
 	free.shuffle()
 	# Три терминала знаний — в разных обычных комнатах.
 	for k in mini(3, free.size()):
 		rooms[free[k]]["term"] = true
+	# Проклятый сундук: большая награда, но следующие 10 побед любой удар смертелен.
+	if stage >= 1 and free.size() > 3 and rng.randf() < 0.6:
+		rooms[free[3]]["cursed"] = true
 	# Предметы и враги.
 	var pool: Array = POOLS[stage]
 	var elites := 1 + int(stage >= 2)
@@ -255,11 +273,20 @@ static func build(stage: int, biome: String, rng: RandomNumberGenerator) -> Dict
 				var s3 = take.call(floor_sp)
 				if s3:
 					things.append({"kind": "food", "x": s3[0], "y": s3[1]})
+			"secret":
+				for kk in ["cells", "gold", "scroll" if rng.randf() < 0.5 else "food"]:
+					var s = take.call(floor_sp)
+					if s:
+						things.append({"kind": kk, "x": s[0], "y": s[1]})
 			"shop":
 				floor_sp.sort_custom(func(a, b): return absi(a[0] - c.x * RW - RW / 2) > absi(b[0] - c.x * RW - RW / 2))
 				var s = take.call(floor_sp)
 				if s:
 					things.append({"kind": "shop", "x": s[0], "y": s[1]})
+		if rooms[c].get("cursed", false):
+			var s = take.call(floor_sp)
+			if s:
+				things.append({"kind": "cchest", "x": s[0], "y": s[1]})
 		if rooms[c].get("term", false):
 			var s = take.call(floor_sp)
 			if s:
@@ -290,7 +317,7 @@ static func build(stage: int, biome: String, rng: RandomNumberGenerator) -> Dict
 	var room_list := []
 	for c in rooms:
 		room_list.append({"cell": c, "kind": rooms[c]["kind"], "locked": rooms[c].get("locked", false)})
-	var out := {"rows": rows, "w": w, "h": h, "things": things, "lifts": lifts, "kdoors": kdoors, "rooms": room_list, "links": links, "grid": Vector2i(gx, gy), "biome": biome, "stage": stage}
+	var out := {"rows": rows, "w": w, "h": h, "things": things, "lifts": lifts, "kdoors": kdoors, "secrets": secrets, "rooms": room_list, "links": links, "grid": Vector2i(gx, gy), "biome": biome, "stage": stage}
 	_fix_reach(out)
 	return out
 
@@ -371,14 +398,14 @@ static func passage(doors: Array) -> Dictionary:
 static func solid(rows: Array, x: int, y: int) -> bool:
 	if y < 0 or y >= rows.size() or x < 0 or x >= rows[0].length():
 		return true
-	return rows[y][x] == "#" or rows[y][x] == "K"
+	return rows[y][x] == "#" or rows[y][x] == "K" or rows[y][x] == "B"
 
 static func stand(rows: Array, x: int, y: int) -> bool:
 	# Можно стоять: клетка и над ней свободны, под ногами камень или платформа, не шипы.
 	if y < 1 or y >= rows.size() - 1 or solid(rows, x, y) or solid(rows, x, y - 1) or rows[y][x] == "^":
 		return false
 	var below: String = rows[y + 1][x]
-	return below == "#" or below == "=" or below == "K"
+	return below == "#" or below == "=" or below == "K" or below == "B"
 
 static func reach(map: Dictionary, open_doors: bool = false) -> Dictionary:
 	# Модель героя: шаг и прыжок до 3 клеток вверх и 4 в сторону, падение, лестницы (с них можно спрыгнуть), лифты.
@@ -392,7 +419,7 @@ static func reach(map: Dictionary, open_doors: bool = false) -> Dictionary:
 		var r: String = rows[y]
 		for x in w:
 			var ch := r[x]
-			g[y * w + x] = 1 if ch == "#" or (ch == "K" and not open_doors) else 2 if ch == "=" else 3 if ch == "H" else 4 if ch == "^" else 0
+			g[y * w + x] = 1 if ch == "#" or ((ch == "K" or ch == "B") and not open_doors) else 2 if ch == "=" else 3 if ch == "H" else 4 if ch == "^" else 0
 	var sol := func(x: int, y: int) -> bool:
 		return x < 0 or y < 0 or x >= w or y >= h or g[y * w + x] == 1
 	var st := func(x: int, y: int) -> bool:

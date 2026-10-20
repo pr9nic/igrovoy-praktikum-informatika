@@ -3,7 +3,7 @@
 # Живой журнал не трогается. Запуск: bash tools/run_all_tests.sh   (браузерная часть — около часа; только логика: bash tools/run_all_tests.sh quick)
 cd "$(dirname "$0")/.." || exit 1
 pass=0; fail=0; report=()
-run() { local name=$1; shift; if out=$("$@" 2>&1 | tail -3); then if grep -q "ALL OK" <<<"$out"; then pass=$((pass+1)); report+=("✅ $name"); return; fi; fi; fail=$((fail+1)); report+=("❌ $name: $(tail -1 <<<"$out")"); }
+run() { local name=$1; shift; if out=$("$@" 2>&1 | tail -12); then if grep -q "ALL OK" <<<"$out"; then pass=$((pass+1)); report+=("✅ $name"); return; fi; fi; fail=$((fail+1)); report+=("❌ $name: $(tail -1 <<<"$out")"); }
 run "Лаборатория (логика)" node tools/lab/tests/lab.test.js
 run "Машина Тьюринга" node tools/lab/tests/turing.test.js
 run "Сортировочная горка" node tools/lab/tests/sortyard.test.js
@@ -11,6 +11,8 @@ run "Шифровальня" node tools/lab/tests/cipher.test.js
 run "Архиватор" node tools/lab/tests/archiver.test.js
 run "Карта дорог" node tools/lab/tests/graphs.test.js
 run "Черепаха" node tools/lab/tests/turtle.test.js
+run "Шифровальщик" node tools/lab/tests/codes.test.js
+run "Сортировочная станция" node tools/lab/tests/sorting.test.js
 run "Герой кода: уровни и решения" node tools/codehero/tests/levels.test.js
 run "Практикум: сервер" python3 tools/practicum/tests/practicum_api_test.py
 run "Битва класса: логика клиента" node tools/practicum/tests/battle_logic.test.js
@@ -24,7 +26,7 @@ run "Тенегрыз: рекорды" python3 tools/typing_escape/tests/typing_
 run "Издатель и шаблоны" bash -c 'python3 tools/check_templates.py && echo ALL OK'
 if command -v godot >/dev/null; then   # Godot без окна: уровни мастерской, генераторы «Клеток памяти», правила аркад
   godot --headless --path godot/workshop --import >/dev/null 2>&1
-  for t in solutions cells world arcade kodopolia; do run "Godot: $t" timeout 600 godot --headless --path godot/workshop --script res://tests/$t.gd; done
+  for t in solutions cells world cells_sim arcade kodopolia; do run "Godot: $t" timeout 600 godot --headless --path godot/workshop --script res://tests/$t.gd; done
 else report+=("⏭ Godot: команды godot нет, проверки Godot пропущены"); fi
 if [ "$1" != quick ]; then
   run "Битва класса: интерфейс (заглушка сервера)" timeout 600 node tools/practicum/tests/battle_ui.test.mjs

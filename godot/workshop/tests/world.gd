@@ -11,7 +11,7 @@ func check(name: String, ok: bool, info: String = "") -> void:
 
 func _init() -> void:
 	var rng := RandomNumberGenerator.new()
-	var stats := {"rooms": 0, "lifts": 0, "ladders": 0, "kdoors": 0, "shops": 0, "foes": 0, "levels": 0}
+	var stats := {"secrets": 0, "secret_items": 0, "cursed": 0, "rooms": 0, "lifts": 0, "ladders": 0, "kdoors": 0, "shops": 0, "foes": 0, "levels": 0}
 	var fails := []
 	for stage in 5:
 		for seed in 40:
@@ -39,7 +39,9 @@ func _init() -> void:
 					terms += 1
 				if th["kind"] == "shop":
 					stats["shops"] += 1
-				if not th["kind"] in ["start", "portal", "term", "chest", "scroll", "food", "gold", "shop"]:
+				if th["kind"] == "cchest":
+					stats["cursed"] += 1
+				if not th["kind"] in ["start", "portal", "term", "chest", "scroll", "food", "gold", "shop", "cells", "cchest"]:
 					stats["foes"] += 1
 			# Под каждым лифтом и под каждой лестницей — пол: шахты не пересекаются.
 			for l in m["lifts"]:
@@ -48,6 +50,17 @@ func _init() -> void:
 				if not World.solid(m["rows"], lx, lb) or not World.solid(m["rows"], lx + 1, lb):
 					ok = false
 					info += " · под лифтом дыра (%d,%d)" % [lx, lb]
+			# Тайная комната: за стеной B, без разрушения стены её предметы недостижимы, после — достижимы.
+			for sc in m["secrets"]:
+				stats["secrets"] += 1
+				var room: Vector2i = sc["room"]
+				for th in m["things"]:
+					if th["x"] / World.RW == room.x and th["y"] / World.RH == room.y and th["kind"] in ["cells", "gold", "scroll", "food"]:
+						stats["secret_items"] += 1
+						var at := Vector2i(th["x"], th["y"])
+						if seen.has(at) or not seen_open.has(at):
+							ok = false
+							info += " · тайник (%d,%d) %s" % [at.x, at.y, "виден без пролома" if seen.has(at) else "недостижим"]
 			if terms != 3:
 				ok = false
 				info += " · терминалов %d" % terms
@@ -59,6 +72,7 @@ func _init() -> void:
 			if not ok:
 				fails.append(info)
 	check("200 уровней: портал, терминалы и лавки достижимы от входа, сокровища — за дверью знаний", fails.is_empty(), "; ".join(fails.slice(0, 4)))
+	check("тайные комнаты за трескающейся стеной и проклятые сундуки встречаются", stats["secrets"] > 80 and stats["secret_items"] > 200 and stats["cursed"] > 40, str(stats))
 	check("уровни большие и ветвистые: в среднем больше 11 комнат, есть лифты, лестницы, двери знаний и лавки", stats["rooms"] / stats["levels"] >= 11 and stats["lifts"] > 50 and stats["ladders"] > 500 and stats["kdoors"] > 30 and stats["shops"] > 20, str(stats))
 	for stage in [2, 3, 4]:
 		var a := World.arena(stage)
