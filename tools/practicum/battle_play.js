@@ -1,7 +1,7 @@
 // «Битва класса»: экран ученика — лобби, вопросы, усилители, мемы, «Восхождение», привалы с мини-играми, итоги.
 (() => {
   'use strict';
-  const B = window.BattleQ, {h, btn, img, API, Sound, ART, POWER, MODES, TIERS, pick} = B;
+  const B = window.BattleQ, BL = window.BattleLogic, {h, btn, img, API, Sound, ART, POWER, MODES, TIERS, pick} = B;
   let timer = 0, tick = 0, alive = 0;
   function stop() { clearInterval(timer); clearInterval(tick); timer = tick = 0; alive++; Sound.stop(); try { speechSynthesis.cancel(); } catch {} }
   const climber = n => ART + 'climber_' + ((n | 0) % 12) + '.webp';
@@ -128,12 +128,12 @@
 
     function final() {
       once('final', () => { stop(); const card = h('div', 'bt2-final'), pod = h('div', 'bt2-podium');
-        const top3 = (d.top || []).slice(0, 3); for (const [i, k] of [[1, 'silver'], [0, 'gold'], [2, 'bronze']]) { const t = top3[i]; if (!t) continue; const c = h('div', 'bt2-pod ' + k); c.append(img(climber(t.avatar), '', ''), h('b', '', t.name), h('span', '', String(t.score)), h('i', '', String(i + 1))); pod.append(c); }
-        card.append(img(ART + 'summit.webp', 'bt2-final-bg', ''), h('h1', '', '🏆 Игра окончена!'), pod);
+        const top3 = (d.top || []).slice(0, 3); for (const [i, k] of [[1, 'silver'], [0, 'gold'], [2, 'bronze']]) { const t = top3[i]; if (!t) continue; const c = h('div', 'bt2-pod ' + k); c.style.setProperty('--d', [1.1, 0.6, 0.1][i] + 's'); c.append(img(climber(t.avatar), '', ''), h('b', '', t.name), h('span', '', String(t.score)), h('i', '', String(i + 1))); pod.append(c); }
+        if (B.calm()) pod.classList.add('calm'); card.append(img(ART + 'summit.webp', 'bt2-final-bg', ''), h('h1', '', '🏆 Игра окончена!'), pod);
         if (d.place) card.append(h('p', 'bt2-place', `Твоё место: ${d.place} · очков ${d.score}`));
         if (d.teams) { const ol = h('ol', 'bt2-teams'); for (const t of d.teams) { const li = h('li'); li.style.borderColor = t.color; li.append(h('b', '', t.name), h('span', '', String(t.score))); ol.append(li); } card.append(h('h3', '', 'Команды'), ol); }
         if (d.titles && d.titles.length) { const tl = h('div', 'bt2-titles'); for (const t of d.titles) { const c = h('div'); c.append(h('b', '', t.title), h('span', '', t.name)); tl.append(c); } card.append(tl); }
-        card.append(btn('← К играм', 'p-primary', () => ctx.leave())); main.replaceChildren(card); Sound.sfx('win'); });
+        card.append(btn('← К играм', 'p-primary', () => ctx.leave())); main.replaceChildren(card); if (d.place && d.place <= 3) B.confetti(main, 4500); Sound.sfx('win'); });
     }
 
     function drawSide() {
@@ -160,19 +160,22 @@
       main.replaceChildren(card);
       if (d.inventory.length < 3) choice = await new Promise(res => { for (const k of brk.offers) { const b = btn('', 'bt2-offer', () => res(k)); b.dataset.offer = k; b.append(img(ART + 'pw_' + k + '.webp', '', ''), h('b', '', POWER[k][0]), h('small', '', POWER[k][1])); cards.append(b); } });
       if (run !== alive) return;
-      const score = await miniGame(brk.game, card);
+      const pk = d.peak || {}, score = await miniGame(BL.pickMini(brk.game, (pk.mastered | 0) * 7 + (pk.passed | 0) * 3 + (d.score | 0)), card);
       try { const r = await S('break', {pick: choice, mini: score}); toast(`Привал окончен: +${r.bonus} очков`, 'ev-power'); } catch (e) { toast(e.message); }
       feedback = false; view = ''; sync();
     }
 
-    function miniGame(kind, card) {
+    function miniGame(kind, card, len) {   // len — длительность в мс (на стенде — короче)
       const NAMES = {bats: ['🦇 Пещера летучих мышей', 'Щёлкай по летучим мышам, пока они не долетели до альпиниста!'], circles: ['⭕ Круговые войны', 'Обводи кристаллы мышью — замкни круг вокруг нескольких сразу!'],
-        gear: ['🎒 Найди снаряжение', 'Открывай карточки и находи пары снаряжения.'], landslide: ['🪨 Оползень', 'Уворачивайся от камней: двигай мышью или стрелками.']};
+        gear: ['🎒 Найди снаряжение', 'Открывай карточки и находи пары снаряжения.'], landslide: ['🪨 Оползень', 'Уворачивайся от камней: двигай мышью или стрелками.'],
+        bits: ['🔐 Двоичный сейф', 'Открой сейф: включай разряды так, чтобы двоичное число равнялось заданному десятичному.'],
+        rope: ['🧗 Верёвка', 'Хватайся за верёвку, когда бегунок в зелёной зоне: щёлкни или нажми пробел. Три промаха — конец.'],
+        trail: ['⛰ Запомни тропу', 'Запомни, какие камни подсветились, и пройди тропу в том же порядке.']};
       return new Promise(resolve => {
         card.replaceChildren(h('h1', '', NAMES[kind][0]), h('p', 'bt2-lead', NAMES[kind][1]));
-        const info = h('div', 'bt2-mginfo'), area = h('div', 'bt2-mg'); card.append(info, area); let score = 0, end = Date.now() + (kind === 'gear' ? 30000 : 15000), over = false;
-        const finish = () => { if (over) return; over = true; clearInterval(loop); cancelAnimationFrame(raf); info.textContent = `Итог: ${Math.min(300, score)} очков`; Sound.sfx('win'); setTimeout(() => resolve(Math.min(300, score)), 1200); };
-        const hud = () => { info.textContent = `Очки: ${Math.min(300, score)} · осталось ${Math.max(0, Math.ceil((end - Date.now()) / 1000))} с`; };
+        const info = h('div', 'bt2-mginfo'), area = h('div', 'bt2-mg'); card.append(info, area); let score = 0, end = Date.now() + (len || {gear: 30000, bits: 30000, rope: 20000, trail: 35000}[kind] || 15000), over = false; const offs = [];
+        const finish = () => { if (over) return; over = true; clearInterval(loop); cancelAnimationFrame(raf); offs.forEach(f => f()); info.textContent = `Итог: ${BL.capMini(score)} очков`; Sound.sfx('win'); setTimeout(() => resolve(BL.capMini(score)), 1200); };
+        const hud = () => { info.textContent = `Очки: ${BL.capMini(score)} · осталось ${Math.max(0, Math.ceil((end - Date.now()) / 1000))} с`; };
         let raf = 0, loop = setInterval(() => { hud(); if (Date.now() >= end) finish(); }, 200);
         const sprite = n => { const i = new Image(); i.src = ART + n + '.webp'; return i; };
         if (kind === 'gear') {
@@ -181,6 +184,38 @@
               if (open.length === 2) { const [[a, ka], [b2, kb]] = open; if (ka === kb) { score += 50; found++; Sound.sfx('good'); open = []; a.classList.add('done'); b2.classList.add('done'); if (found === 6) finish(); } else setTimeout(() => { a.classList.remove('up'); b2.classList.remove('up'); open = []; }, 650); } });
             c.dataset.card = k; c.append(img(ART + k + '.webp', '', '')); grid.append(c); });
           area.append(grid); hud(); return; }
+        if (kind === 'bits') {   // двоичный сейф: разрядов всё больше — от 4 до 8
+          const goal = h('div', 'bt2-bitgoal'), row = h('div', 'bt2-bitrow'), now = h('div', 'bt2-bitnow'); let n = 4, bits = [], target = 1, solved = 0, lock = false;
+          const next = () => { n = Math.min(8, 4 + Math.floor(solved / 2)); bits = Array(n).fill(0); target = 1 + Math.floor(Math.random() * (2 ** n - 1)); lock = false; draw(); };
+          const draw = () => { goal.textContent = `Набери число ${target}`; now.textContent = `Сейчас: ${BL.bitsValue(bits)} = ${bits.join('')}₂`;
+            row.replaceChildren(...bits.map((b, i) => { const cell = h('div', 'bt2-bitcell'), c = btn(String(b), 'bt2-bit' + (b ? ' on' : ''), () => { if (over || lock) return; bits[i] ^= 1; Sound.sfx('tick');
+                if (BL.bitsValue(bits) === target) { lock = true; score += 10 + 5 * n; solved++; Sound.sfx('good'); row.classList.add('ok'); setTimeout(() => { row.classList.remove('ok'); if (!over) next(); }, 450); } draw(); });
+              c.dataset.bit = i; cell.append(h('small', '', String(2 ** (n - 1 - i))), c); return cell; })); };
+          area.append(goal, row, now); next(); hud(); return; }
+        if (kind === 'rope') {   // верёвка: попасть бегунком в зону; зона сужается, бегунок ускоряется
+          const wrap = h('div', 'bt2-rope'), track = h('div', 'bt2-track'), zone = h('i', 'bt2-zone'), run = h('b', 'bt2-runner'), col = h('div', 'bt2-ropecol'), who = img(ART + 'climber_' + (d.avatar % 12) + '.webp', '', 'альпинист'), lifeEl = h('div', 'bt2-lives');
+          let c = 0.5, w = 0.26, sp = 1.8, ph = 0, pos = 0.5, lives = 3, up = 0, last = performance.now();
+          const place = () => { zone.style.left = (100 * (c - w / 2)) + '%'; zone.style.width = (100 * w) + '%'; who.style.bottom = Math.min(82, 4 + up * 6) + '%'; lifeEl.textContent = '❤'.repeat(lives) + '♡'.repeat(3 - lives); };
+          const grab = () => { if (over) return; const p = BL.ropeHit(pos, c, w);
+            if (p) { score += p; up++; Sound.sfx('good'); w = Math.max(0.08, w * 0.9); sp = Math.min(4, sp * 1.08); c = 0.15 + Math.random() * 0.7; track.classList.remove('miss'); }
+            else { lives--; Sound.sfx('bad'); track.classList.add('miss'); if (lives <= 0) { place(); return finish(); } } place(); };
+          const step = now => { if (over) return; ph += Math.min(0.05, (now - last) / 1000) * sp; last = now; pos = 0.5 + 0.5 * Math.sin(ph); run.style.left = (100 * pos) + '%'; raf = requestAnimationFrame(step); };
+          const keys = e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); grab(); } }; document.addEventListener('keydown', keys); offs.push(() => document.removeEventListener('keydown', keys));
+          const go = btn('✊ Хватай!', 'bt2-grab', grab); go.dataset.act = 'bt-grab'; track.addEventListener('pointerdown', grab);
+          track.append(zone, run); col.append(who); wrap.append(col, h('div', 'bt2-ropeside')); wrap.lastChild.append(lifeEl, track, go); area.append(wrap); place(); raf = requestAnimationFrame(step); hud(); return; }
+        if (kind === 'trail') {  // запомни тропу: последовательность подсветок, каждый круг на шаг длиннее
+          const pics = ['mg_helmet', 'mg_rope', 'mg_axe', 'mg_flashlight', null, 'mg_tent', 'mg_boulder', 'mg_shard', 'mg_bat'], grid = h('div', 'bt2-trail'), say = h('p', 'bt2-trailsay');
+          let seq = [], mine = [], showing = true, lives = 3, len = 3;
+          const tiles = pics.map((p, i) => { const b = btn('', 'bt2-tile', () => press(i)); b.dataset.tile = i; b.append(img(p ? ART + p + '.webp' : ART + 'climber_' + (d.avatar % 12) + '.webp', '', '')); grid.append(b); return b; });
+          const flash = (i, ms) => { tiles[i].classList.add('lit'); setTimeout(() => tiles[i].classList.remove('lit'), ms); };
+          const show = () => { showing = true; mine = []; say.textContent = `Смотри и запоминай: ${seq.length} шагов · ${'❤'.repeat(lives)}`;
+            seq.forEach((k, j) => setTimeout(() => { if (!over) { flash(k, 430); Sound.sfx('tick'); } }, 500 + j * 620));
+            setTimeout(() => { if (over) return; showing = false; say.textContent = 'Повтори тропу!'; }, 500 + seq.length * 620); };
+          const round = () => { seq = Array.from({length: len}, () => Math.floor(Math.random() * 9)); show(); };
+          const press = i => { if (over || showing) return; flash(i, 220); mine.push(i); const k = BL.trailOk(seq, mine);
+            if (k < mine.length) { lives--; Sound.sfx('bad'); if (lives <= 0) return finish(); showing = true; say.textContent = 'Не туда! Смотри ещё раз'; setTimeout(show, 900); return; }
+            if (k === seq.length) { score += 15 * len; Sound.sfx('good'); len = Math.min(9, len + 1); showing = true; say.textContent = 'Верно! Тропа длиннее…'; setTimeout(round, 900); } };
+          area.append(say, grid); round(); hud(); return; }
         const cv = h('canvas', 'bt2-mgcv'); cv.width = 720; cv.height = 405; area.append(cv); const g = cv.getContext('2d'), av = sprite('climber_' + (d.avatar % 12)), things = [];
         const S2 = {bat: sprite('mg_bat'), boulder: sprite('mg_boulder'), shard: sprite('mg_shard')};
         const xy = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * 720 / r.width, (e.clientY - r.top) * 405 / r.height]; };
@@ -212,6 +247,7 @@
       });
     }
 
+    if (location.hostname === '127.0.0.1') window.btMini = miniGame;   // для проверок на стенде
     timer = setInterval(sync, 900); sync();
   }
   window.BattlePlay = {student, stop};

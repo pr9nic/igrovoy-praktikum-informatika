@@ -11,6 +11,7 @@ run "Шифровальня" node tools/lab/tests/cipher.test.js
 run "Архиватор" node tools/lab/tests/archiver.test.js
 run "Герой кода: уровни и решения" node tools/codehero/tests/levels.test.js
 run "Практикум: сервер" python3 tools/practicum/tests/practicum_api_test.py
+run "Битва класса: логика клиента" node tools/practicum/tests/battle_logic.test.js
 run "Битва класса: сервер" python3 tools/battle/tests/battle_test.py
 run "Кодополия по сети: сервер" python3 tools/kodopoly/tests/kp_test.py
 run "Сбой на станции: правила" python3 tools/crew/tests/rules_test.py
@@ -24,6 +25,7 @@ if command -v godot >/dev/null; then   # Godot без окна: уровни м�
   for t in solutions cells world arcade kodopolia; do run "Godot: $t" timeout 600 godot --headless --path godot/workshop --script res://tests/$t.gd; done
 else report+=("⏭ Godot: команды godot нет, проверки Godot пропущены"); fi
 if [ "$1" != quick ]; then
+  run "Битва класса: интерфейс (заглушка сервера)" timeout 600 node tools/practicum/tests/battle_ui.test.mjs
   for d in game-8-lab game-9-lab game-8-practicum game-6-typing-escape game-8-crew; do python tools/publish.py drafts/$d.json >/dev/null 2>&1; done
   for t in practicum profile battle kp lab oge typing crew board arcade codehero; do bash tools/trainer/tests/start.sh >/dev/null; run "Браузер: $t" timeout 3000 node tools/trainer/tests/$t.test.mjs; done
   bash tools/trainer/tests/stop.sh >/dev/null
