@@ -210,7 +210,7 @@ def render(data,attachments,output):
         engine=Path(__file__).with_name('practicum');pr=public['practicum']
         pr['version']=hashlib.sha256((ROOT/'godot'/pr['godotProject']/'export'/'index.pck').read_bytes()).hexdigest()[:10];pr['gameUrl']='/courses/'+pr['godotHost']+'/game/index.html'
         pr['artVersion']=hashlib.sha256(b''.join(f.read_bytes() for f in sorted((engine/'art').glob('cover_*.webp'))+sorted((engine/'art').glob('link_*.webp'))+sorted((Path(__file__).with_name('lab')/'art').glob('cover_*.webp')))).hexdigest()[:8]
-        encoded=json.dumps(public,ensure_ascii=False,allow_nan=False).replace('<','\u003c').replace('>','\u003e').replace('&','\u0026')
+        encoded=json.dumps(public,ensure_ascii=False,allow_nan=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
         names=['battle_logic.js','battle.js','battle_play.js','battle_teach.js','practicum.js','practicum.css','battle.css']
         version=hashlib.sha256(b''.join((engine/n).read_bytes() for n in names)).hexdigest()[:10]
         for name in names:shutil.copyfile(engine/name,output/name)
