@@ -229,6 +229,21 @@ func _continue() -> void:
 
 # ---------- рисование ----------
 
+func _fit(s: String, size: int, width: float) -> Array:
+	# Перенос строки по словам так, чтобы каждая часть влезала в width пикселей.
+	var out := []
+	var line := ""
+	for w in s.split(" "):
+		var cand := w if line == "" else line + " " + w
+		if line != "" and font.get_string_size(cand, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > width:
+			out.append(line)
+			line = w
+		else:
+			line = cand
+	if line != "":
+		out.append(line)
+	return out
+
 func rr(r: Rect2, color: Color, radius: float, border: Color = Color(0, 0, 0, 0), bw: int = 0) -> void:
 	box.bg_color = color
 	box.set_corner_radius_all(int(radius))
@@ -314,9 +329,22 @@ func _overlay() -> void:
 	if state == "intro":
 		text(title.to_upper(), Vector2(640, 160), 38, INK)
 		text("ЭТАП %d ИЗ %d" % [stage, stages], Vector2(640, 208), 22, GOLD)
+		# Правила переносим по ширине окна и сжимаем, чтобы цель не наезжала на точки этапов.
+		var lines := []
 		for i in rules.size():
-			text(rules[i], Vector2(640, 256 + i * 36), 18, INK if i == 0 else MUTED, false)
-		text(goal_text(), Vector2(640, 256 + rules.size() * 36 + 18), 20, Color("7df9ff"))
+			for part in _fit(str(rules[i]), 18, 730.0):
+				lines.append([part, i == 0])
+		var goal_lines := _fit(goal_text(), 20, 730.0)
+		var gap := minf(32.0, (470.0 - 248.0 - goal_lines.size() * 28.0) / maxf(1.0, lines.size()))
+		var fs := 18 if gap >= 26.0 else 16
+		var y := 248.0
+		for ln in lines:
+			text(ln[0], Vector2(640, y), fs, INK if ln[1] else MUTED, false)
+			y += gap
+		y += 6.0
+		for part in goal_lines:
+			text(part, Vector2(640, y), 20 if fs == 18 else 18, Color("7df9ff"))
+			y += 28.0
 		var dots := ""
 		for n in range(1, stages + 1):
 			dots += "★" if int(done_stars.get(n, 0)) > 0 else ("●" if n == stage else "○")
