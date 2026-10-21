@@ -4,7 +4,7 @@ import {browser, BASE} from './lib.mjs';
 const b = await browser(), URL = BASE + '/courses/game-8-lab/';
 const done = (ms = 15000) => b.ev(`await waitFor(()=>window.labDone,${ms});const d=window.labDone;window.labDone=null;return d`);
 const click = sel => b.ev(`document.querySelector('${sel}').click()`);
-const counts = {codes: 10, sorting: 8, graphs: 10, turtle: 8, pcbuild: 8, layout: 10, autopilot: 8, ege: 18, arrays: 10, logic: 8, ipnet: 8, oge: 8, sheets: 12, bytes: 10, sets: 10, executors: 23, office: 12, gates: 14, factory: 15, detective: 9, dbcity: 14, pixel: 15, race: 12, quest: 8, turing: 8, sortyard: 12, cipher: 10, archiver: 9};
+const counts = {blast: 10, runner: 8, bunker: 8, blocks: 8, codes: 10, sorting: 8, graphs: 10, turtle: 8, pcbuild: 8, layout: 10, autopilot: 8, ege: 18, arrays: 10, logic: 8, ipnet: 8, oge: 8, sheets: 12, bytes: 10, sets: 10, executors: 23, office: 12, gates: 14, factory: 15, detective: 9, dbcity: 14, pixel: 15, race: 12, quest: 8, turing: 8, sortyard: 12, cipher: 10, archiver: 9};
 const CARDS = Object.keys(counts).length, NOART = [];   // у новых игр пока нет обложек (art/cover_<id>.webp)
 await b.size(1440, 900); await b.send('Page.navigate', {url: URL}); await b.sleep(800); await b.ev('localStorage.clear()'); await b.send('Page.reload'); await b.ev(`await waitFor(()=>document.querySelectorAll('.lab-card').length===${CARDS},20000);`); await b.sleep(900); await b.shot('lab-hub', 1440, 900, true);
 b.check(`${CARDS} игр на странице, у каждой обложка (кроме новых без картинок: ${NOART.join(', ')})`, await b.ev(`return [...document.querySelectorAll('.lab-card img')].filter(i=>i.complete&&i.naturalWidth>100).length===${CARDS - NOART.length}`));

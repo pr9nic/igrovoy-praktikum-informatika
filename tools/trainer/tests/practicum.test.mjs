@@ -19,7 +19,7 @@ await b.send('Page.navigate', {url: BASE + '/courses/game-8-practicum/'}); await
 b.check('сначала ученик выбирает класс и себя', await b.ev("return $('.p-login select').value==='8 «А»'&&!$('.p-grid')")); await b.shot('practicum-login', 1280, 780, false);
 await b.ev("$('[data-field=name]').value='Проверка';$('.p-login form').requestSubmit();"); b.check('одно слово вместо фамилии и имени не принимается', await b.ev("return !$('.p-grid')&&/фамилию/.test($('.p-login .p-status').textContent)"));
 await b.ev(`$('[data-field=name]').value='${WHO.name}';$('.p-login form').requestSubmit();await waitFor(()=>$('.p-grid'));`);
-b.check('список игр: двадцать шесть игр с отметкой и пять ссылок', await b.ev("return document.querySelectorAll('.p-card').length===26&&document.querySelectorAll('.p-link').length===5")); await b.shot('practicum-list', 1280, 780, true);
+b.check('список игр: тридцать игр с отметкой и пять ссылок', await b.ev("return document.querySelectorAll('.p-card').length===30&&document.querySelectorAll('.p-link').length===5")); await b.shot('practicum-list', 1280, 780, true);
 b.check('с сервера пришли задание дня, ранг, лига класса и двенадцать значков, пока не полученных', await b.ev("return !!$('.p-daily [data-daily]')&&document.querySelectorAll('.p-badge').length===12&&!!$('.p-rank')&&!!$('.p-league')&&!document.querySelector('.p-badge.got')"));
 b.check('без звёзд кнопки отметки нет', await b.ev("return !document.querySelector('[data-mark]')"));
 

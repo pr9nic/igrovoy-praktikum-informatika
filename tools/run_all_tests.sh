@@ -11,6 +11,10 @@ run "Шифровальня" node tools/lab/tests/cipher.test.js
 run "Архиватор" node tools/lab/tests/archiver.test.js
 run "Карта дорог" node tools/lab/tests/graphs.test.js
 run "Черепаха" node tools/lab/tests/turtle.test.js
+run "Байт-бласт" node tools/lab/tests/blast.test.js
+run "Код-раннер" node tools/lab/tests/runner.test.js
+run "Бункер" node tools/lab/tests/bunker.test.js
+run "Кодоблокс" node tools/lab/tests/blocks.test.js
 run "Шифровальщик" node tools/lab/tests/codes.test.js
 run "Сортировочная станция" node tools/lab/tests/sorting.test.js
 run "Герой кода: уровни и решения" node tools/codehero/tests/levels.test.js
