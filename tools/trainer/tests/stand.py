@@ -30,6 +30,10 @@ def test_battle_sol(cls, key):   # верный ответ на текущий �
     return jsonify(q=qid, type=q['type'], sol=sol)
 if not hasattr(a, 'kp_tables'):   # «Кодополия» по сети
     from kp_api import install_kodopoly; install_kodopoly(a)
+@a.route('/test/bunker/<int:tid>')
+def test_bunker(tid):   # верные ответы испытаний сетевого «Бункера» — только для браузерной проверки на стенде
+    t = a.bunker_tables.tables.get(tid)
+    return jsonify(rights=[q['right'] for q in t['game']['trials']] if t and t['game'] else None)
 REAL = portal_security.TEACHER_IPS; portal_security.TEACHER_IPS = frozenset()
 @a.route('/test/crew/place')
 def test_crew_place():   # перенос игрока для теста: сервер «Сбоя на станции» телепорты из браузера не принимает

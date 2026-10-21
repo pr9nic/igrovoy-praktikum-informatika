@@ -442,7 +442,7 @@ func invariant(g) -> String:
 			return "больше трёх предметов"
 		sum += int(pl["bytes"])
 		cr += int(pl["crystals"])
-	if sum != 40 + int(g.bank):
+	if sum != 10 * g.players.size() + int(g.bank):
 		return "байты не сходятся: у игроков %d, из банка %d" % [sum, int(g.bank)]
 	if cr != int(g.stats["crystals"]):
 		return "кристаллов у игроков %d, куплено %d" % [cr, int(g.stats["crystals"])]
@@ -473,14 +473,14 @@ func invariant(g) -> String:
 func finished(g) -> String:
 	if g.state != "over" or g.phase != "end" or not g.won:
 		return "партия не закончилась: %s / %s, раунд %d" % [g.state, g.phase, int(g.round_n)]
-	if int(g.round_n) != int(g.rounds) + 1 or g.placings.size() != 4:
+	if int(g.round_n) != int(g.rounds) + 1 or g.placings.size() != g.np:
 		return "раундов %d из %d, мест %d" % [int(g.round_n), int(g.rounds), g.placings.size()]
 	var seen := {}
-	for k in 4:
+	for k in g.np:
 		seen[int(g.placings[k])] = true
-	if seen.size() != 4:
+	if seen.size() != g.np:
 		return "места — не перестановка игроков"
-	for k in 3:
+	for k in g.np - 1:
 		var a: Dictionary = g.players[int(g.placings[k])]
 		var b: Dictionary = g.players[int(g.placings[k + 1])]
 		if int(a["crystals"]) < int(b["crystals"]) or (int(a["crystals"]) == int(b["crystals"]) and int(a["bytes"]) < int(b["bytes"])):
@@ -624,6 +624,36 @@ func _init() -> void:
 					info = "кристаллы %s, байты %s" % [str(g.players.map(func(x): return x["crystals"])), str(g.players.map(func(x): return x["bytes"]))]
 				g.free()
 	check("18 партий ботов доиграны до конца: байты не уходят в минус и сходятся с банком, кристаллы — с покупками, места по правилам, были все мини-игры", game_err == "", game_err if game_err != "" else info + ", самая долгая — %d кадров" % max_ticks)
+	# Сетевой стол без ботов: двое или трое людей — партия идёт по кругу из них и доходит до итога.
+	var small_err := ""
+	for npl in [2, 3]:
+		seed(77 + npl)
+		var gs = Board.new()
+		gs.grade = 8
+		gs.np = npl
+		gs.setup()
+		gs.np = npl
+		gs.rng.seed = 77 + npl
+		gs.stage = 1
+		gs.start()
+		for pl in gs.players:
+			pl["bot"] = true
+		var ns := 0
+		var turns := {}
+		while gs.state == "play" and ns < 80000:
+			gs.tick(0.05)
+			ns += 1
+			turns[gs.cur] = true
+			var e2 := invariant(gs)
+			if e2 != "" and small_err == "":
+				small_err = "%d игрока: %s" % [npl, e2]
+				break
+		if small_err == "":
+			var e3 := finished(gs)  # проверяем каждый стол, первая ошибка сохраняется
+			if e3 != "" or gs.players.size() != npl or turns.size() != npl:
+				small_err = "%d игрока: %s, игроков %d, ходили %s" % [npl, e3, gs.players.size(), str(turns.keys())]
+		gs.free()
+	check("стол без ботов на 2 и 3 игроков: ходят только они, торги и мини-игры работают, партия доиграна", small_err == "", small_err)
 	check("в партиях были торги и проданные с торгов кварталы, разные события раунда", int(total["auctions"]) > 10 and int(total["sold"]) > 5 and evs.size() >= 4, "торгов %d, продано %d, события %s" % [int(total["auctions"]), int(total["sold"]), str(evs.keys())])
 	# --- сетевая партия: создатель (место 0), гость на связи (место 1), отключившийся (место 2) и бот ---
 	var net_err := ""

@@ -27,7 +27,7 @@ check('чужой токен не принимается', P('sync', table=h['ta
 # ранний старт и уход из лобби
 x = P('create', className=A, name='Первый Создатель').get_json(); y = P('join', className=A, name='Второй Друг', table=x['table']).get_json()
 P('leave', table=x['table'], token=x['token']); s = P('state', table=x['table'], token=y['token']).get_json(); check('создатель ушёл — создателем становится следующий', s['seat'] == 0, s)
-z = P('join', className=A, name='Третий Друг', table=x['table']).get_json(); check('создатель начинает вдвоём раньше', P('start', table=x['table'], token=y['token']).get_json()['started'])
+z = P('join', className=A, name='Третий Друг', table=x['table']).get_json(); st0 = P('start', table=x['table'], token=y['token'], bots=False).get_json(); check('создатель начинает вдвоём раньше и без ботов', st0['started'] and st0['bots'] is False, st0)
 T = app.kp_tables; q = P('create', className=A, name='Ушедший Ученик').get_json(); T.tables[q['table']]['seats'][0]['seen'] -= 60
 check('лобби, где никто не отвечает, исчезает из списка', all(t['id'] != q['table'] for t in P('list', className=A).get_json()['tables']))
 # чужое место по имени не выдаётся; отказ не выбрасывает из своего лобби; брошенные партии освобождают место

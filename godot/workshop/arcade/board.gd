@@ -83,6 +83,7 @@ var stats := {}
 var net := ""
 var my := 0
 var net_names: Array = []
+var np := 4                 # игроков за столом: 4 с ботами или столько, сколько людей (2–4) без ботов
 var net_started := false
 var net_poll := 0.0
 var net_seq := 0
@@ -121,10 +122,12 @@ func setup() -> void:
 			my = int(kd.get("seat", 0))
 			net = "host" if my == 0 else "guest"
 			net_names = kd["players"]
+			# Боты на свободные места — по выбору создателя лобби; без ботов играют только люди.
+			np = 4 if bool(kd.get("bots", true)) else clampi(net_names.size(), 2, 4)
 			stages = 1
 			JavaScriptBridge.eval(NET_JS % [int(kd.get("table", 0)), JSON.stringify(str(kd["token"]))])
 			rules = ["Сетевая партия «%s»: одноклассники играют за своими компьютерами." % str(kd.get("title", "")),
-				"Свободные места занимают боты. Ход каждого — на его компьютере.",
+				"Свободные места — у ботов, если создатель их включил. Ход каждого — на его компьютере.",
 				"Не купленный квартал уходит с торгов. Каждые три раунда — событие раунда.",
 				"Кристалл стоит %d байтов. Пробел — бросить кубик, 1–4 — выбрать ответ." % CRYSTAL,
 				"Подробные правила — клавиша H или кнопка «? Правила» вверху."]
@@ -145,7 +148,7 @@ func setup_stage() -> void:
 func reset() -> void:
 	_build_board()
 	players.clear()
-	for i in 4:
+	for i in np:
 		var human: bool = i == 0 if net == "" else i < net_names.size()
 		var nm: String = NAMES[i] if net == "" or not human else _short(str(net_names[i])) + (" (ты)" if i == my else "")
 		players.append({"name": nm, "color": COLORS[i], "pos": 0, "bytes": 10, "crystals": 0, "items": [], "skip": false, "bot": not human, "hop": 0.0})
@@ -276,7 +279,7 @@ func _begin_turn() -> void:
 func _end_turn() -> void:
 	score = players[my]["bytes"]
 	cur += 1
-	if cur >= 4:
+	if cur >= np:
 		cur = 0
 		_start_mini()
 		return
@@ -436,7 +439,7 @@ func _card() -> void:
 					pl["items"].erase("antivirus")
 					say("Антивирус распознал фишинг!")
 				else:
-					var to: Dictionary = players[(cur + 1) % 4]
+					var to: Dictionary = players[(cur + 1) % np]
 					var k := mini(3, int(pl["bytes"]))
 					pl["bytes"] -= k
 					to["bytes"] += k
@@ -501,9 +504,11 @@ func _shop() -> void:
 func _auction(sp: Dictionary) -> void:
 	var opening: int = KP.auction_start(int(sp["price"]))
 	var lims := []
-	for k in 4:
+	var outs := []
+	for k in np:
 		lims.append(_bot_limit(k, sp))
-	auc = {"sp": sp, "bid": opening - 1, "lead": -1, "out": [false, false, false, false], "turn": cur, "limits": lims}
+		outs.append(false)
+	auc = {"sp": sp, "bid": opening - 1, "lead": -1, "out": outs, "turn": cur, "limits": lims}
 	stats["auctions"] += 1
 	say("«%s» уходит с торгов: старт — %s." % [sp["name"], _bt(opening)])
 	_auction_next()
@@ -518,7 +523,7 @@ func _bot_limit(k: int, sp: Dictionary) -> int:
 			if int(s["owner"]) >= 0:
 				per[int(s["owner"])] += 1
 	var theirs := 0
-	for o in 4:
+	for o in np:
 		if o != k:
 			theirs = maxi(theirs, int(per[o]))
 	return KP.auction_limit(int(sp["price"]), int(players[k]["bytes"]), int(per[k]), theirs, count, skill, rng.randi_range(-1, 1), _crystal_price())
@@ -645,7 +650,7 @@ func _start_mini() -> void:
 		q = str(m["q"])
 		code = m["code"]
 	var bots := []
-	for k in 4:
+	for k in np:
 		var human: bool = not players[k]["bot"]
 		bots.append({"t": 99.0 if human else rng.randf_range(1.2, 4.6) * (1.45 - skill), "ok": false if human else rng.randf() < skill, "done": false, "human": human, "pick": -1})
 	# Программу надо прочитать — на неё больше времени.
@@ -654,7 +659,7 @@ func _start_mini() -> void:
 	sfx.emit("click")
 
 func _mini_pick(seat: int, i: int) -> void:
-	if phase != "mini" or seat < 0 or seat >= 4 or i < 0 or i >= mini["opts"].size():
+	if phase != "mini" or seat < 0 or seat >= np or i < 0 or i >= mini["opts"].size():
 		return
 	var b: Dictionary = mini["bots"][seat]
 	if not b["human"] or int(b["pick"]) != -1:
@@ -670,7 +675,7 @@ func _mini_pick(seat: int, i: int) -> void:
 
 func _mini_finish() -> void:
 	var res := []
-	for k in 4:
+	for k in np:
 		var b: Dictionary = mini["bots"][k]
 		if b["ok"] and float(b["t"]) <= float(mini["limit"]):
 			res.append([k, float(b["t"])])
@@ -729,7 +734,7 @@ func _event_text(brief: bool) -> String:
 	return KP.event_text(round_ev, str(GROUPS[ev_group]["name"]) if ev_group >= 0 and ev_group < GROUPS.size() else "", brief)
 
 func _finish() -> void:
-	var order := [0, 1, 2, 3]
+	var order := range(np)
 	order.sort_custom(func(a, b): return int(players[a]["crystals"]) > int(players[b]["crystals"]) or (int(players[a]["crystals"]) == int(players[b]["crystals"]) and int(players[a]["bytes"]) > int(players[b]["bytes"])))
 	placings = order
 	phase = "end"
@@ -904,7 +909,7 @@ func _process(delta: float) -> void:
 	if net == "host":
 		for inp in d.get("inputs", []):
 			var seat := int(inp.get("seat", -1))
-			if seat > 0 and seat < 4 and not players[seat]["bot"]:
+			if seat > 0 and seat < np and not players[seat]["bot"]:
 				afk = 0.0
 				_do(seat, str(inp.get("type", "")), int(inp.get("i", -1)))
 		net_seq += 1
@@ -959,7 +964,7 @@ func _snap() -> Dictionary:
 func _apply(sn: Dictionary) -> void:
 	wait_snap = false
 	var ps: Array = sn.get("players", [])
-	for k in mini(4, ps.size()):
+	for k in mini(np, ps.size()):
 		var src: Dictionary = ps[k]
 		var pl: Dictionary = players[k]
 		if int(src["pos"]) != int(pl["pos"]):
@@ -1004,7 +1009,7 @@ func _apply(sn: Dictionary) -> void:
 	placings = []
 	for x in pl_arr:
 		placings.append(int(x))
-	if str(sn.get("state", "")) == "over" and state == "play" and placings.size() == 4:
+	if str(sn.get("state", "")) == "over" and state == "play" and placings.size() == np:
 		stage_won()
 
 func _continue() -> void:
@@ -1048,7 +1053,7 @@ func draw_game() -> void:
 	var ct := _tex("kp_icon6")
 	if ct:
 		draw_texture_rect(ct, Rect2(cp - Vector2(30, 30), Vector2(60, 60)), false)
-	for k in 4:
+	for k in np:
 		_draw_token(k)
 	_draw_center(inner)
 	_draw_panel()
@@ -1151,8 +1156,7 @@ func _draw_die(c: Vector2, v: int, spin: bool) -> void:
 func _draw_panel() -> void:
 	var x := 905.0
 	text("ИГРОКИ", Vector2(x + 180, 92), 16, MUTED)
-	var order := [0, 1, 2, 3]
-	for k in 4:
+	for k in np:
 		var pl: Dictionary = players[k]
 		var r := Rect2(x, 108 + k * 112, 360, 102)
 		rr(r, Color(0.09, 0.12, 0.25, 0.94), 16, pl["color"] if k == cur else Color(1, 1, 1, 0.1), 3 if k == cur else 2)
@@ -1266,9 +1270,9 @@ func _draw_mini() -> void:
 		text("%d" % (i + 1), orr.position + Vector2(30, 38), 22, GOLD)
 		var o := str(mini["opts"][i])
 		text(o, orr.get_center() + Vector2(10, 0), 26 if o.length() <= 15 else (21 if o.length() <= 20 else 18), INK)
-	var others := [0, 1, 2, 3]
+	var others := range(np)
 	others.erase(my)
-	for j in 3:
+	for j in others.size():
 		var k: int = others[j]
 		var b: Dictionary = mini["bots"][k]
 		var bx := 330.0 + j * 220.0
@@ -1282,7 +1286,7 @@ func _draw_mini() -> void:
 		text("Быстрее всех и верно — +%s. Клавиши 1–4 или щелчок." % _bt(_reward(6)), Vector2(640, 640), 16, MUTED, false)
 
 func _overlay() -> void:
-	if state == "over" and won and placings.size() == 4:
+	if state == "over" and won and placings.size() == np:
 		draw_rect(Rect2(0, 0, W, H), Color(0.03, 0.05, 0.12, 0.78))
 		var r := Rect2(240, 100, 800, 520)
 		rr(r, Color("16203a"), 26, GOLD, 3)
@@ -1291,7 +1295,7 @@ func _overlay() -> void:
 		var st := stage_stars()
 		for i in 3:
 			text("★", Vector2(550 + i * 90, 232), 70, GOLD if i < st else Color(1, 1, 1, 0.16), false)
-		for k in 4:
+		for k in np:
 			var pl: Dictionary = players[placings[k]]
 			var y := 320.0 + k * 52.0
 			rr(Rect2(330, y - 22, 620, 44), Color(0.1, 0.14, 0.28, 0.9), 12, pl["color"] if placings[k] == my else Color(1, 1, 1, 0.1), 2)
@@ -1339,7 +1343,7 @@ const HELP := [
 		"«истина или ложь», «что выведет программа», с 7 класса — IP-адрес и маска файлов.",
 		"Кто быстрее и верно ответил — получает больше байтов."]],
 	["Игра по сети", "kp_token0", ["В практикуме нажми «Кодополия» → выбери лобби или создай своё.",
-		"Когда в лобби соберутся четверо — партия начнётся сама. Свободные места занимают боты.",
+		"Создатель начинает партию от двух игроков — с ботами на свободных местах или без них. Вчетвером партия начнётся сама.",
 		"Каждый ходит со своего компьютера. Партию ведёт компьютер создателя лобби — пусть он не закрывает вкладку.",
 		"Если игрок долго не отвечает, за него ходит бот. Esc — выйти к списку игр."]],
 ]

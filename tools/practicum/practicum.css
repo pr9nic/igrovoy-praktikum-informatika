@@ -147,3 +147,21 @@ body.p-playing{overflow:hidden}
 @media(max-width:560px){.pf-top{gap:8px}.pf-top .pf-sp{display:none}.p-toast{left:12px;right:12px;bottom:12px}.p-toast img{width:52px;height:52px}.p-league li span{min-width:0;margin-right:8px}}
 /* «Уменьшить движение»: без всплывающих и подпрыгивающих анимаций, переходы мгновенные */
 @media(prefers-reduced-motion:reduce){#practicum *,#practicum *::before,#practicum *::after,.p-toast,.p-bt-call,.pf-modal *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0s!important;scroll-behavior:auto!important}}
+
+/* «Бункер» по сети */
+#practicum .bn-game{display:grid;gap:14px}#practicum .bn-head{padding:16px;border-radius:16px;background:#141e38;border:2px solid #c9a24d}#practicum .bn-head h2{margin:4px 0}
+#practicum .bn-needs{display:flex;flex-wrap:wrap;gap:6px}#practicum .bn-needs span{padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.08);font-size:13px}
+#practicum .bn-state{font-weight:800;font-size:17px;margin:0}#practicum .bn-state.bad{color:#ff9a8a}
+#practicum .bn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+#practicum .bn-card{display:grid;gap:5px;align-content:start;padding:10px;border-radius:16px;background:#182240;border:2px solid #34466e}#practicum .bn-card.me{border-color:#ffd34d}#practicum .bn-card.out{opacity:.45;filter:grayscale(.8)}
+#practicum .bn-pic{width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;background:#0b1024}
+#practicum .bn-attr{display:grid;grid-template-columns:70px 1fr auto;gap:6px;align-items:baseline;font-size:13px}#practicum .bn-attr i{font-style:normal;color:#9fb2d6}#practicum .bn-attr span{color:#56628a}
+#practicum .bn-attr.open span{color:#fff;font-weight:700}#practicum .bn-attr.secret span{color:#c9b98a;font-style:italic}#practicum .bn-open{padding:2px 8px;font-size:12px}
+#practicum .bn-vote{margin-top:4px}#practicum .bn-votes{color:#ffb0a0;font-weight:800;font-size:13px}#practicum .bn-outtag{color:#ff9a8a;font-weight:800;font-size:13px}
+#practicum .bn-trials{display:grid;gap:10px}#practicum .bn-q{padding:12px;border-radius:14px;background:#141e38;border:2px solid #34466e;display:grid;gap:6px}#practicum .bn-q pre{margin:0;font:700 15px ui-monospace,monospace;white-space:pre-wrap}
+#practicum .bn-spec{margin:0;color:#7df9ff;font-size:13px}#practicum .bn-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#practicum .bn-opt{padding:10px;border-radius:12px;border:2px solid #4b5f8f;background:#243253;color:#fff;font:700 15px system-ui;cursor:pointer;text-align:left}#practicum .bn-opt.on{border-color:#ffd34d}#practicum .bn-opt.gone{opacity:.3;text-decoration:line-through}#practicum .bn-opt.right{background:#1f5a45;border-color:#7fe3c8}
+#practicum .bn-result{padding:16px;border-radius:16px;display:grid;gap:6px}#practicum .bn-result.win{background:#163d2e;border:2px solid #7fe3c8}#practicum .bn-result.lose{background:#3d1a22;border:2px solid #ff8a8a}#practicum .bn-result p{margin:0}
+#practicum .bn-log{font-size:13px;color:#9fb2d6}#practicum .bn-log p{margin:2px 0}
+@media(max-width:700px){#practicum .bn-opts{grid-template-columns:1fr}}
+#practicum .kp-bots{display:flex;gap:8px;align-items:center;font-weight:700;cursor:pointer}#practicum .kp-bots input{width:20px;height:20px}

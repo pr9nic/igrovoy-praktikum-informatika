@@ -426,8 +426,9 @@ static func auction_steps(bid: int, bytes: int) -> Array:
 
 static func auction_next(turn: int, lead: int, out: Array, bytes: Array, bid: int) -> int:
 	# Кто ставит следующим: по кругу после turn — не лидер, не спасовавший и тот, кому хватает байтов. -1 — торги окончены.
-	for k in range(1, 5):
-		var s := (turn + k) % 4
+	var n := bytes.size()
+	for k in range(1, n + 1):
+		var s := (turn + k) % n
 		if s != lead and not bool(out[s]) and int(bytes[s]) >= bid + 1:
 			return s
 	return -1

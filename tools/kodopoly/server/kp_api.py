@@ -1,7 +1,8 @@
 """«Кодополия» по сети: лобби класса на 2–4 учеников за разными компьютерами.
 
 Ученик сам создаёт лобби с названием или входит в лобби друзей из списка своего класса. Когда собрались четверо,
-партия начинается сама; создатель лобби может начать и раньше (от двух игроков) — свободные места займут боты.
+партия начинается сама; создатель лобби может начать и раньше (от двух игроков) — со своими ботами на свободных местах
+или без них (тогда играют только люди).
 Логику партии ведёт игра на компьютере создателя (место 0): она забирает ходы гостей и выкладывает снимок поля.
 Лобби живут в памяти сервера; в журнал ничего не пишется.
 """
@@ -74,7 +75,7 @@ class Tables:
         if sum(1 for t in self.tables.values() if t['cls'] == class_name) >= 15:
             raise Refused('В классе уже 15 лобби — зайдите в одно из них.', 409)
         self._leave_others(class_name, norm(name))
-        t = {'id': self.next_id, 'cls': class_name, 'title': title, 'seats': [], 'started': False, 'snap': None, 'inputs': [], 'touched': now}
+        t = {'id': self.next_id, 'cls': class_name, 'title': title, 'seats': [], 'started': False, 'snap': None, 'inputs': [], 'touched': now, 'bots': True}
         self.next_id += 1
         self.tables[t['id']] = t
         return t, self._seat(t, name, now)
@@ -132,7 +133,7 @@ def install_kodopoly(app):
 
     def view(t, s):
         return {'status': 'ok', 'table': t['id'], 'title': t['title'], 'seat': s['seat'], 'token': s['token'], 'started': t['started'],
-                'players': [x['name'] for x in t['seats']], 'host': short(t['seats'][0]['name'])}
+                'players': [x['name'] for x in t['seats']], 'host': short(t['seats'][0]['name']), 'bots': t.get('bots', True)}
 
     def route(name, fn):
         def handler():
@@ -162,6 +163,8 @@ def install_kodopoly(app):
             raise Refused('Начать раньше может только создатель лобби.', 403)
         if len(t['seats']) < 2:
             raise Refused('Нужен хотя бы ещё один игрок.')
+        if 'bots' in d:
+            t['bots'] = bool(d.get('bots'))
         t['started'] = True
         return view(t, s)
     route('start', start)
@@ -203,3 +206,8 @@ def install_kodopoly(app):
         install_blox(app)
     except Exception as error:
         print('blox_api не подключён:', error, flush=True)
+    try:
+        from bunker_api import install_bunker
+        install_bunker(app)
+    except Exception as error:
+        print('bunker_api не подключён:', error, flush=True)

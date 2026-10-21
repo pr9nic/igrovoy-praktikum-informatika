@@ -215,10 +215,10 @@
   function battleTeacher() { window.BattleTeach.teacher({root, grade: data.grade, leave: () => { login(); teacherProbe(); }}); }
   /* ---------- «Кодополия» по сети: лобби класса ---------- */
   const KAPI = (path, body) => fetch('/results/api/kp/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), cache: 'no-store'}).then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok || d.status !== 'ok') { const e = new Error(d.message || 'сервер не ответил'); e.status = r.status; throw e; } return d; });
-  let kpTimer = 0, kpMe = null;
+  let kpTimer = 0, kpMe = null, kpBots = true;
   function kpStop() { clearInterval(kpTimer); if (kpMe && !kpMe.started) KAPI('leave', {table: kpMe.table, token: kpMe.token}).catch(() => {}); kpMe = null; }
   function kpView() {
-    clearInterval(battleTimer); kpStop();
+    clearInterval(battleTimer); kpStop(); if (typeof bkStop === 'function') bkStop();
     const page = el('section', 'kp-page'), top = el('div', 'bt-top'), body = el('div', 'kp-body'), msg = el('p', 'p-note', ''); msg.setAttribute('role', 'status');
     const back = button('← К играм', 'p-small', () => { kpStop(); list(); }); back.dataset.act = 'kp-back';
     top.append(back, el('h1', 'kp-h', `🎲 Кодополия с одноклассниками · ${player.className}`)); const rules = el('details', 'kp-rules'); rules.append(el('summary', '', '📖 Как играть в Кодополию'));
@@ -228,15 +228,19 @@
       ['Кварталы', 'Свободный квартал можно купить; не купил — он уходит на торги. На чужом квартале платишь аренду, но верный ответ «файрволу знаний» делит её пополам. Весь район одного цвета — аренда вдвое больше.'],
       ['Клетки', '«?» — вопрос за 4 байта; карты «Вирус / Обновление»; магазин предметов; карантин — ответь верно, иначе пропустишь ход.'],
       ['Мини-игры и события', 'После каждого раунда — мини-игра на скорость для всех. Каждые три раунда — событие: хакатон, DDoS-атака, распродажа и другие.'],
-      ['По сети', 'Выбери лобби или создай своё. Когда соберутся четверо, партия начнётся сама; свободные места займут боты. Создатель лобби ведёт партию — ему нельзя закрывать вкладку.']]) { const p2 = el('p'); p2.append(el('b', '', h + '. '), t); rules.append(p2); }
+      ['По сети', 'Выбери лобби или создай своё. Создатель начинает партию, когда захочет: от двух игроков, с ботами на свободных местах или без них — галочка «Боты» перед стартом. Вчетвером партия начнётся сама. Создатель лобби ведёт партию — ему нельзя закрывать вкладку.']]) { const p2 = el('p'); p2.append(el('b', '', h + '. '), t); rules.append(p2); }
     page.append(top, rules, msg, body); paint(page);
     const board = P.games.find(g => g.id === 'board');
-    const go = d => { clearInterval(kpTimer); try { sessionStorage.setItem('school4-kp', JSON.stringify({table: d.table, token: d.token, seat: d.seat, players: d.players, title: d.title, at: Date.now()})); } catch {} kpMe = null; list(); open({...board, params: board.params + '&net=1'}, 1); };
+    const go = d => { clearInterval(kpTimer); try { sessionStorage.setItem('school4-kp', JSON.stringify({table: d.table, token: d.token, seat: d.seat, players: d.players, title: d.title, bots: d.bots !== false, at: Date.now()})); } catch {} kpMe = null; list(); open({...board, params: board.params + '&net=1'}, 1); };
     const lobby = d => { kpMe = d; if (d.started) return go(d);
       const seats = el('div', 'kp-seats'); for (let i = 0; i < 4; i++) { const s = el('div', 'kp-seat' + (d.players[i] ? ' on' : '')); s.append(el('b', '', d.players[i] ? (i === 0 ? '👑 ' : '') + d.players[i] + (i === d.seat ? ' (ты)' : '') : 'свободно')); seats.append(s); }
-      const box = el('div', 'kp-lobby'); box.append(el('p', 'p-eyebrow', 'ТВОЁ ЛОББИ'), el('h2', '', d.title), seats, el('p', 'p-note', `Игроков: ${d.players.length} из 4. Когда соберутся четверо, партия начнётся сама.`));
+      const box = el('div', 'kp-lobby'); box.append(el('p', 'p-eyebrow', 'ТВОЁ ЛОББИ'), el('h2', '', d.title), seats, el('p', 'p-note', `Игроков: ${d.players.length} из 4. Создатель начинает партию, когда захочет (от двух игроков); вчетвером — начнётся сама.`));
       const row = el('div', 'bt-top');
-      if (d.seat === 0 && d.players.length >= 2) { const st = button('▶ Начать сейчас (свободные места займут боты)', 'p-primary', async () => { try { lobby(await KAPI('start', {table: d.table, token: d.token})); } catch (e) { msg.textContent = e.message; } }); st.dataset.act = 'kp-start'; row.append(st); }
+      if (d.seat === 0 && d.players.length >= 2) {
+        const lab = el('label', 'kp-bots'), cb = el('input'); cb.type = 'checkbox'; cb.checked = kpBots; cb.dataset.field = 'kp-bots'; cb.addEventListener('change', () => { kpBots = cb.checked; }); lab.append(cb, ' Боты на свободные места');
+        const st = button('▶ Начать партию', 'p-primary', async () => { try { lobby(await KAPI('start', {table: d.table, token: d.token, bots: kpBots})); } catch (e) { msg.textContent = e.message; } }); st.dataset.act = 'kp-start';
+        row.append(lab, st); }
+      else if (d.seat !== 0) box.append(el('p', 'p-note', 'Ждём, когда создатель начнёт партию.'));
       const lv = button('Выйти из лобби', 'p-small', () => { kpStop(); kpView(); }); lv.dataset.act = 'kp-leave'; row.append(lv); box.append(row); body.replaceChildren(box); };
     const browse = async () => { let d; try { d = await KAPI('list', {className: player.className}); msg.textContent = ''; } catch (e) { msg.textContent = 'Нет связи с сервером: ' + e.message; return; }
       const form = el('form', 'kp-new'), inp = el('input'); inp.maxLength = 40; inp.placeholder = 'Название лобби, например «Команда 17»'; inp.dataset.field = 'kp-title'; named(inp, 'Название нового лобби');
@@ -252,6 +256,97 @@
       if (keep && document.activeElement !== inp && keep.value) inp.value = keep.value; };
     const tickKp = async () => { if (kpMe) { try { lobby(await KAPI('state', {table: kpMe.table, token: kpMe.token})); } catch (e) { msg.textContent = e.message; kpMe = null; browse(); } } else if (!body.querySelector('[data-field=kp-title]') || document.activeElement !== body.querySelector('[data-field=kp-title]')) browse(); };
     browse(); kpTimer = setInterval(tickKp, 1500);
+  }
+  /* ---------- «Бункер» по сети: настолка для класса, партию ведёт сервер ---------- */
+  const BKAPI = (path, body) => fetch('/results/api/bunker/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), cache: 'no-store'}).then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok || d.status !== 'ok') { const e = new Error(d.message || 'сервер не ответил'); e.status = r.status; throw e; } return d; });
+  let bkTimer = 0, bkMe = null;
+  const BK_CARDS = [['job', 'профессия'], ['skill', 'навык'], ['item', 'багаж'], ['health', 'здоровье'], ['trait', 'характер']];
+  function bkStop() { clearInterval(bkTimer); if (bkMe && bkMe.phase === 'lobby') BKAPI('leave', {table: bkMe.table, token: bkMe.token}).catch(() => {}); bkMe = null; }
+  function bkView() {
+    clearInterval(battleTimer); kpStop(); bkStop();
+    const page = el('section', 'kp-page bn-page'), top = el('div', 'bt-top'), body = el('div', 'kp-body'), msg = el('p', 'p-note', ''); msg.setAttribute('role', 'status');
+    const back = button('← К играм', 'p-small', () => { bkStop(); list(); }); back.dataset.act = 'bk-back';
+    top.append(back, el('h1', 'kp-h', `🚪 Бункер с классом · ${player.className}`));
+    const rules = el('details', 'kp-rules'); rules.append(el('summary', '', '📖 Как играть в «Бункер»'));
+    for (const [h, t] of [['Сюжет', 'Глюк отключил интернет, а в серверный бункер помещаются не все. Каждый из вас — кандидат со своими картами: профессия, навык, багаж, здоровье и характер. Свои карты видишь только ты.'],
+      ['Раунд', 'Каждый открывает одну свою карту — выбирай, какую показать классу. Потом голосуете: кого не берём в бункер. Кто набрал больше голосов — выбывает. Обсуждайте вслух: убеждайте, что вы нужны бункеру!'],
+      ['Испытания', 'Когда в бункере осталось столько, сколько мест, — испытания по информатике: каждый в бункере отвечает сам, испытание пройдено, если верно ответило большинство. Специалист с нужным навыком или вещью видит подсказку: два неверных ответа зачёркнуты.'],
+      ['Победа', 'Бункер выстоял, если провалено не больше одного испытания. Поэтому берите тех, кто закрывает нужды бункера — и считайте объём флешек: Мбайт и Гбайт отличаются в 1024 раза!']]) { const p2 = el('p'); p2.append(el('b', '', h + '. '), t); rules.append(p2); }
+    page.append(top, rules, msg, body); paint(page);
+    let lastKey = '';
+    const act = async (body2) => { try { draw(await BKAPI('act', {table: bkMe.table, token: bkMe.token, ...body2})); } catch (e) { msg.textContent = e.message; } };
+    const portrait = jid => { const im = new Image(); im.alt = ''; im.className = 'bn-pic'; im.src = `art/bunker_p${jid}.webp`; return im; };
+    function draw(d) {
+      bkMe = {...bkMe, ...d};
+      const key = JSON.stringify(d); if (key === lastKey) return; lastKey = key; msg.textContent = '';
+      if (d.phase === 'lobby') return lobbyView(d);
+      const box = el('div', 'bn-game'), head = el('div', 'bn-head');
+      const banner = {reveal: `Раунд ${d.round}: открой одну свою карту`, vote: 'Голосование: кого не берём в бункер?', result: 'Итог раунда', trial: 'Испытания бункера', end: d.result && d.result.win ? '🎉 Бункер выстоял!' : '💥 Бункер не выстоял'}[d.phase];
+      head.append(el('p', 'p-eyebrow', `СЦЕНАРИЙ · ${d.scenario}`), el('h2', '', banner + (d.left && d.phase !== 'end' ? ` · ${d.left} с` : '')), el('p', 'p-note', `${d.story} В бункере мест: ${d.keep} из ${d.players.length}.`));
+      const needs = el('div', 'bn-needs'); for (const n of d.needs) needs.append(el('span', '', '○ ' + n)); head.append(needs); box.append(head);
+      if (d.phase === 'vote') box.append(el('p', 'bn-state', d.voted ? `Голос принят. Проголосовали: ${d.votes_in} из ${d.players.length - d.out.length}.` : 'Нажми «Не брать» под тем, кого не берёшь в бункер.'));
+      if (d.phase === 'result' && d.last) box.append(el('p', 'bn-state bad', `В бункер не попадает: ${d.players[d.last.out]}.`));
+      const grid = el('div', 'bn-grid');
+      d.cards.forEach((c, i) => {
+        const out = d.out.includes(i), card = el('div', 'bn-card' + (out ? ' out' : '') + (i === d.me ? ' me' : ''));
+        card.append(portrait(c.jid), el('b', '', d.players[i] + (i === d.me ? ' (ты)' : '') + (i === 0 ? ' 👑' : '')));
+        for (const [k, name] of BK_CARDS) {
+          const open = c.open.includes(k), v = c.cards[k], row = el('div', 'bn-attr' + (open ? ' open' : v != null ? ' secret' : ''));
+          row.append(el('i', '', name), el('span', '', v == null ? '?' : v));
+          if (i === d.me && !open && d.phase === 'reveal' && !out && c.open.length <= d.round) { const b = button('Открыть', 'p-small bn-open', () => act({type: 'open', card: k})); b.dataset.open = k; named(b, `Открыть карту «${name}»`); row.append(b); }
+          card.append(row);
+        }
+        if (d.phase === 'result' && d.last && d.last.tally[String(i)]) card.append(el('div', 'bn-votes', `голосов против: ${d.last.tally[String(i)]}`));
+        if (out) card.append(el('div', 'bn-outtag', 'не попал(а) в бункер'));
+        if (d.phase === 'vote' && !d.voted && !out && i !== d.me && !d.out.includes(d.me)) { const b = button('Не брать', 'p-primary bn-vote', () => act({type: 'vote', target: i})); b.dataset.vote = i; named(b, `Голосую: не брать ${d.players[i]}`); card.append(b); }
+        grid.append(card);
+      });
+      box.append(grid);
+      if (d.trials) {
+        const tr = el('div', 'bn-trials');
+        tr.append(el('h3', '', d.in_bunker ? `Испытания: ответь на все (ответили ${d.answered} из ${d.players.length - d.out.length})` : 'Испытания проходят те, кто в бункере. Можешь решать вместе с ними:'));
+        d.trials.forEach((t, k) => {
+          const q = el('div', 'bn-q'); q.append(el('b', '', t.need), el('pre', '', t.q));
+          if (t.spec) q.append(el('p', 'bn-spec', '🛠 Ты специалист: два неверных ответа зачёркнуты.'));
+          const opts = el('div', 'bn-opts');
+          t.opts.forEach((o, j) => { const right = d.rights && d.rights[k] === j, b = button(o, 'bn-opt' + (t.gone.includes(j) ? ' gone' : '') + (t.mine === j ? ' on' : '') + (right ? ' right' : ''), () => act({type: 'answer', trial: k, opt: j}));
+            b.disabled = d.phase !== 'trial' || !d.in_bunker || t.gone.includes(j); b.dataset.trial = k; b.dataset.opt = j; opts.append(b); });
+          q.append(opts); tr.append(q);
+        });
+        box.append(tr);
+      }
+      if (d.result) {
+        const r = el('div', 'bn-result ' + (d.result.win ? 'win' : 'lose'));
+        r.append(el('h3', '', d.result.win ? `Бункер выстоял: пройдено испытаний ${d.result.passed} из ${d.result.trials.length}` : `Бункер не выстоял: пройдено ${d.result.passed} из ${d.result.trials.length}`));
+        for (const t of d.result.trials) r.append(el('p', '', `${t.ok ? '✅' : '❌'} ${t.need}: верно ${t.good} из ${t.of}` + (t.spec.length ? ` · специалист: ${t.spec.join(', ')}` : ' · специалиста в бункере не было')));
+        if (d.host) { const again = button('▶ Новая партия', 'p-primary', async () => { try { draw(await BKAPI('start', {table: bkMe.table, token: bkMe.token})); } catch (e) { msg.textContent = e.message; } }); again.dataset.act = 'bk-again'; r.append(again); }
+        else r.append(el('p', 'p-note', 'Новую партию начинает создатель лобби.'));
+        box.append(r);
+      }
+      if (d.log && d.log.length) { const lg = el('div', 'bn-log'); for (const l of d.log) lg.append(el('p', '', l)); box.append(lg); }
+      body.replaceChildren(box);
+    }
+    function lobbyView(d) {
+      const seats = el('div', 'kp-seats'); for (let i = 0; i < Math.max(4, d.players.length); i++) { const s = el('div', 'kp-seat' + (d.players[i] ? ' on' : '')); s.append(el('b', '', d.players[i] ? (i === 0 ? '👑 ' : '') + d.players[i] + (i === d.me ? ' (ты)' : '') : 'свободно')); seats.append(s); }
+      const box = el('div', 'kp-lobby bn-lobby'); box.append(el('p', 'p-eyebrow', 'ТВОЙ БУНКЕР'), el('h2', '', d.title), seats, el('p', 'p-note', `Игроков: ${d.players.length} (от 3 до 10). Партию начинает создатель лобби.`));
+      const row = el('div', 'bt-top');
+      if (d.host) { const st = button('▶ Начать партию', 'p-primary', async () => { try { draw(await BKAPI('start', {table: bkMe.table, token: bkMe.token})); } catch (e) { msg.textContent = e.message; } }); st.disabled = d.players.length < 3; st.dataset.act = 'bk-start'; row.append(st); }
+      const lv = button('Выйти из лобби', 'p-small', () => { bkStop(); bkView(); }); lv.dataset.act = 'bk-leave'; row.append(lv); box.append(row); body.replaceChildren(box);
+    }
+    const browse = async () => { let d; try { d = await BKAPI('list', {className: player.className}); msg.textContent = ''; } catch (e) { msg.textContent = 'Нет связи с сервером: ' + e.message + (e.status === 404 ? ' (нужен перезапуск журнала)' : ''); return; }
+      const form = el('form', 'kp-new'), inp = el('input'); inp.maxLength = 40; inp.placeholder = 'Название бункера, например «Бункер 17»'; inp.dataset.field = 'bk-title'; named(inp, 'Название нового бункера');
+      const mk = button('＋ Создать бункер', 'p-primary'); mk.type = 'submit'; mk.dataset.act = 'bk-create'; form.append(inp, mk);
+      form.addEventListener('submit', async e => { e.preventDefault(); try { bkMe = {}; draw(await BKAPI('create', {className: player.className, name: player.name, title: inp.value})); } catch (er) { msg.textContent = er.message; bkMe = null; } });
+      const ul = el('div', 'kp-list');
+      for (const t of d.tables) { const card = el('div', 'kp-card' + (t.started ? ' busy' : '')); card.append(el('b', '', t.title), el('span', '', `${t.players.length}/10 · ${t.players.join(', ')}`));
+        if (t.started) card.append(el('em', '', 'идёт партия'));
+        else { const j = button('Войти', 'p-small', async () => { try { bkMe = {}; draw(await BKAPI('join', {className: player.className, name: player.name, table: t.id})); } catch (er) { msg.textContent = er.message; bkMe = null; } }); j.dataset.join = t.id; named(j, `Войти в бункер «${t.title}»`); card.append(j); }
+        ul.append(card); }
+      const keep = body.querySelector('[data-field=bk-title]'); if (keep && document.activeElement === keep) inp.value = keep.value;
+      body.replaceChildren(el('h2', '', 'Выбери бункер или создай свой'), el('p', 'p-note', 'Один создаёт бункер, остальные входят из списка. Играть можно от трёх до десяти человек — лучше всем классом в 2–3 бункерах.'), form, d.tables.length ? ul : el('p', 'p-note', 'Бункеров пока нет — создай первый!'));
+      if (keep && document.activeElement !== inp && keep.value) inp.value = keep.value; };
+    const tick = async () => { if (bkMe && bkMe.table) { try { draw(await BKAPI('state', {table: bkMe.table, token: bkMe.token})); } catch (e) { msg.textContent = e.message; bkMe = null; browse(); } } else if (!bkMe && (!body.querySelector('[data-field=bk-title]') || document.activeElement !== body.querySelector('[data-field=bk-title]'))) browse(); };
+    browse(); bkTimer = setInterval(tick, 1000);
   }
   async function studentProfile(className, name) {
     root.replaceChildren(el('p', 'p-note', 'Загружаем профиль…')); root.firstChild.setAttribute('role', 'status');
@@ -409,7 +504,8 @@
     const intro = el('p', 'p-lead', `Каждая игра рассчитана на урок: в ней несколько этапов, за этап дают до трёх звёзд. Звёзды складываются в отметку: ${GRADING.three}% — «3», ${GRADING.four}% — «4», ${GRADING.five}% — «5». Всего у тебя ★ ${total} из ${max}.`);
     const grid = el('div', 'p-grid'); for (const g of P.games) grid.append(card(g));
     queueMicrotask(() => { if (!grid.isConnected) return;
-    if (remote && P.games.some(g => g.id === 'board') && !grid.querySelector('.p-kp')) { const kb = el('div', 'p-kp'), b = button('🎲 Найти лобби', 'p-primary', () => kpView()); b.dataset.act = 'kp'; kb.append(el('strong', '', '🎲 Кодополия с одноклассниками'), el('span', '', 'Создай лобби или зайди к друзьям — до четырёх игроков за разными компьютерами.'), b); grid.before(kb); } });
+    if (remote && P.games.some(g => g.id === 'board') && !grid.querySelector('.p-kp')) { const kb = el('div', 'p-kp'), b = button('🎲 Найти лобби', 'p-primary', () => kpView()); b.dataset.act = 'kp'; kb.append(el('strong', '', '🎲 Кодополия с одноклассниками'), el('span', '', 'Создай лобби или зайди к друзьям — до четырёх игроков за разными компьютерами.'), b); grid.before(kb); }
+    if (remote && P.games.some(g => g.id === 'bunker') && !grid.querySelector('.p-bk')) { const kb = el('div', 'p-kp p-bk'), b = button('🚪 Найти бункер', 'p-primary', () => bkView()); b.dataset.act = 'bk'; kb.append(el('strong', '', '🚪 Бункер с классом'), el('span', '', 'Настолка «Бункер» по сети: от 3 до 10 игроков, свои карты, голосование и испытания по информатике.'), b); grid.before(kb); } });
     const more = el('section', 'p-more'); more.append(el('h2', '', 'Ещё игры этого класса'));
     const links = el('div', 'p-links'); for (const l of P.links) { const a = el('a', 'p-link'); a.href = l.url; const kind = /-crew\//.test(l.url) ? 'crew' : /-glitch\//.test(l.url) ? 'glitch' : /-kodograd\//.test(l.url) ? 'kodograd' : /typing-escape/.test(l.url) ? 'typing' : 'adventure', pic = new Image(); pic.className = 'p-linkpic'; pic.alt = ''; pic.src = `art/link_${kind}.webp?v=${P.artVersion || ''}`; pic.addEventListener('error', () => pic.remove()); a.append(pic, el('strong', '', l.title), el('span', '', l.about), el('small', '', l.note)); a.addEventListener('click', e => { if (e.ctrlKey || e.metaKey || e.shiftKey || e.button) return; e.preventDefault(); open({title: l.title, url: l.url, link: true}); }); links.append(a); } more.append(links);
     const grades = el('nav', 'p-grades'); grades.setAttribute('aria-label', 'Другие классы'); grades.append(el('span', '', 'Другой класс:'));

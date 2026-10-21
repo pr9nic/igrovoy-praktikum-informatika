@@ -23,6 +23,7 @@ run "Битва класса: логика клиента" node tools/practicum/
 run "Битва класса: сервер" python3 tools/battle/tests/battle_test.py
 run "Кодополия по сети: сервер" python3 tools/kodopoly/tests/kp_test.py
 run "Кодоблокс: сервер класса" python3 tools/kodopoly/tests/blox_test.py
+run "Бункер по сети: сервер" python3 tools/kodopoly/tests/bunker_test.py
 run "Сбой на станции: правила" python3 tools/crew/tests/rules_test.py
 run "Гонка: сервер" python3 tools/lab/tests/race_test.py
 run "Тренажёр: рекорды класса" python3 tools/trainer/tests/leaderboard.test.py
