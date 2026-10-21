@@ -105,7 +105,8 @@ func setup() -> void:
 		"Покупай кварталы, получай аренду; ответь верно «файрволу знаний» — заплатишь половину.",
 		"Не купленный квартал — на торги. Каждые 3 раунда — событие: хакатон, DDoS, распродажа…",
 		"Кристалл стоит %d байтов, после покупки он переезжает. Магазин, вирусы, портал, карантин." % CRYSTAL,
-		"После каждого раунда — мини-игра на скорость. Пробел — бросить кубик, 1–4 — выбрать ответ."]
+		"После каждого раунда — мини-игра на скорость. Пробел — бросить кубик, 1–4 — выбрать ответ.",
+		"Подробные правила — клавиша H или кнопка «? Правила» вверху."]
 	for n in ["kp_board1", "kp_board2", "kp_board3", "kp_token0", "kp_token1", "kp_token2", "kp_token3", "kp_icon0", "kp_icon1", "kp_icon2", "kp_icon3", "kp_icon4", "kp_icon5", "kp_icon6", "kp_icon7",
 			"kp_build0", "kp_build1", "kp_build2", "kp_build3", "kp_build4", "kp_build5", "kp_item0", "kp_item1", "kp_item2", "kp_item3"]:
 		var path := "res://assets/%s.%s" % [n, "jpg" if n.begins_with("kp_board") else "png"]
@@ -125,7 +126,8 @@ func setup() -> void:
 			rules = ["Сетевая партия «%s»: одноклассники играют за своими компьютерами." % str(kd.get("title", "")),
 				"Свободные места занимают боты. Ход каждого — на его компьютере.",
 				"Не купленный квартал уходит с торгов. Каждые три раунда — событие раунда.",
-				"Кристалл стоит %d байтов. Пробел — бросить кубик, 1–4 — выбрать ответ." % CRYSTAL]
+				"Кристалл стоит %d байтов. Пробел — бросить кубик, 1–4 — выбрать ответ." % CRYSTAL,
+				"Подробные правила — клавиша H или кнопка «? Правила» вверху."]
 
 func goal_text() -> String:
 	return "Поле «%s»: %d раундов. Займи первое место — три звезды." % [BOARDS[stage - 1], rounds]
@@ -1010,18 +1012,11 @@ func _continue() -> void:
 		return
 	super()
 
-func _input(event: InputEvent) -> void:
-	# В сетевой партии этап один: стрелки не перезапускают поле.
-	if net != "" and state != "play" and event is InputEventKey and event.physical_keycode != KEY_ESCAPE:
-		get_viewport().set_input_as_handled()
-		return
-	super(event)
-
 func debug() -> Dictionary:
 	var ps := []
 	for pl in players:
 		ps.append({"pos": pl["pos"], "bytes": pl["bytes"], "crystals": pl["crystals"], "items": pl["items"], "skip": pl["skip"]})
-	return {"phase": phase, "cur": cur, "round": round_n, "rounds": rounds, "players": ps, "crystal": crystal_at,
+	return {"phase": phase, "help": help_page, "cur": cur, "round": round_n, "rounds": rounds, "players": ps, "crystal": crystal_at,
 		"dialog": {"head": dlg.get("head", ""), "opts": dlg.get("opts", []).size(), "right": dlg.get("right", -1), "bot": dlg.get("bot", false), "mine": _my_dlg()}, "myroll": _my_roll(), "names": players.map(func(x): return x["name"]), "bytes": players.map(func(x): return x["bytes"]),
 		"mini": {"kind": mini.get("kind", ""), "right": mini.get("right", -1), "pick": mini.get("pick", -1)}, "event": round_ev, "auction": not auc.is_empty(), "place": placings.find(my) + 1, "net": net, "my": my, "seq": seen_seq if net == "guest" else net_seq}
 
@@ -1309,3 +1304,127 @@ func _overlay() -> void:
 		text("ESC — К ИГРАМ" if net != "" else ("ПРОБЕЛ — ПОЛЕ «%s»" % BOARDS[stage]) if stage < stages else "ПРОБЕЛ — СЫГРАТЬ ЕЩЁ   ·   ESC — К ИГРАМ", Vector2(640, 568), 24, Color(0.37, 0.88, 0.71, k2))
 		return
 	super._overlay()
+
+# ---------- инструкция «Как играть» (H или кнопка «? Правила», листать ← →) ----------
+
+var help_page := -1
+const HELP_BTN := Rect2(990, 12, 170, 40)
+const HELP := [
+	["Цель игры", "kp_icon6", ["Ты и ещё трое игроков (одноклассники или боты) ходите по кругу из 28 клеток.",
+		"Партия длится 8 раундов (на 2-м поле — 10, на 3-м — 12). Раунд — каждый сделал по ходу.",
+		"Побеждает тот, у кого больше всего КРИСТАЛЛОВ ЗНАНИЙ. При равенстве — у кого больше байтов.",
+		"В начале у каждого 10 байтов. Проходишь «Старт» — получаешь ещё 4.",
+		"Звёзды: 1-е место — три, 2-е — две, остальные — одна."]],
+	["Ход и кубик", "kp_icon5", ["Твой ход — твоя фишка подсвечена. Пробел или кнопка «Бросить» — бросок кубика.",
+		"Фишка проходит столько клеток, сколько выпало, и срабатывает клетка, где она остановилась.",
+		"Варианты ответа и выбор в окнах — клавиши 1–4 или щелчок мышью.",
+		"D — двойной кубик, L — ссылка к кристаллу (если купил эти предметы в магазине)."]],
+	["Кристалл знаний", "kp_icon6", ["Фиолетовый кристалл лежит на одной из клеток. Остановился на нём — можно купить за 20 байтов.",
+		"После покупки кристалл переезжает на новую клетку.",
+		"Копи байты: кристаллы решают, кто победит!",
+		"Портал сразу переносит тебя к кристаллу. Ссылка из магазина — тоже."]],
+	["Кварталы и аренда", "kp_build1", ["Цветные клетки — кварталы. Свободный квартал можно купить по цене на клетке.",
+		"Не купил (отказался или не хватило) — квартал уходит на ТОРГИ: ставки по кругу +1, +3, +5 или «пас».",
+		"Встал на чужой квартал — платишь хозяину аренду (половина цены).",
+		"Но сначала «Файрвол знаний»: ответь верно — заплатишь только половину аренды!",
+		"Весь район (все кварталы одного цвета) у одного хозяина — аренда вдвое больше.",
+		"Встал на свой квартал — можно улучшить его за цену квартала: аренда ещё вдвое больше."]],
+	["Особые клетки", "kp_icon0", ["? Клетка знаний — ответь верно на вопрос по информатике и получи 4 байта.",
+		"Карта «Вирус / Обновление» — случайное событие: потеря или награда, пропуск хода, лишний бросок.",
+		"Магазин — двойной кубик, брандмауэр (одна аренда бесплатно), антивирус (защита от вируса), ссылка.",
+		"Портал — прыжок к кристаллу. Карантин — ответь верно, иначе пропустишь следующий ход."]],
+	["События и мини-игры", "kp_icon1", ["Со 2-го раунда каждые три раунда — событие: хакатон (награды вдвое), DDoS-атака (в одном районе аренды нет),",
+		"распродажа в магазине, обновление сервера (кристалл переезжает), пиковая нагрузка (аренда ×1,5), акция на кристаллы.",
+		"После каждого раунда — МИНИ-ИГРА на скорость для всех: двоичная запись, «что больше»,",
+		"«истина или ложь», «что выведет программа», с 7 класса — IP-адрес и маска файлов.",
+		"Кто быстрее и верно ответил — получает больше байтов."]],
+	["Игра по сети", "kp_token0", ["В практикуме нажми «Кодополия» → выбери лобби или создай своё.",
+		"Когда в лобби соберутся четверо — партия начнётся сама. Свободные места занимают боты.",
+		"Каждый ходит со своего компьютера. Партию ведёт компьютер создателя лобби — пусть он не закрывает вкладку.",
+		"Если игрок долго не отвечает, за него ходит бот. Esc — выйти к списку игр."]],
+]
+
+func _draw() -> void:
+	super()
+	var hov := HELP_BTN.has_point(get_local_mouse_position())
+	rr(HELP_BTN, Color(0.2, 0.15, 0.4, 0.95) if hov or help_page >= 0 else Color(0.13, 0.17, 0.3, 0.92), 10, Color("c08bff"), 2)
+	text("? Правила (H)", HELP_BTN.get_center(), 16, INK)
+	if help_page >= 0:
+		_draw_help()
+
+func _draw_help() -> void:
+	draw_rect(Rect2(0, 0, W, H), Color(0.02, 0.03, 0.09, 0.86))
+	var r := Rect2(140, 40, 1000, 650)
+	rr(r.grow(6), Color(0, 0, 0, 0.35), 30)
+	rr(r, Color("16203a"), 26, Color("c08bff"), 3)
+	var pg: Array = HELP[help_page]
+	text("КАК ИГРАТЬ В КОДОПОЛИЮ", Vector2(640, 74), 17, MUTED)
+	var ic := _tex(str(pg[1]))
+	if ic:
+		draw_texture_rect(ic, Rect2(180, 92, 88, 88), false)
+	draw_string(font_b, Vector2(290, 148), str(pg[0]), HORIZONTAL_ALIGNMENT_LEFT, 800, 32, GOLD)
+	var y := 220.0
+	for line in pg[2]:
+		for part in _wrap(str(line), 84):
+			draw_string(font, Vector2(180, y), str(part), HORIZONTAL_ALIGNMENT_LEFT, 920, 18, INK)
+			y += 25.0
+		y += 9.0
+	var dots := ""
+	for i in HELP.size():
+		dots += "●" if i == help_page else "○"
+	text(dots, Vector2(640, 636), 20, Color("c08bff"), false)
+	for b in _help_btns():
+		rr(b[0], Color(0.13, 0.17, 0.3, 0.95), 12, Color("4b5f8f"), 2)
+		text(b[1], b[0].get_center(), 17, INK)
+	text("← → листать · H или Esc — закрыть", Vector2(640, 668), 14, MUTED, false)
+
+func _help_btns() -> Array:
+	return [[Rect2(170, 614, 150, 44), "← Назад"], [Rect2(960, 614, 150, 44), "Дальше →" if help_page < HELP.size() - 1 else "Закрыть"]]
+
+func _help_go(d: int) -> void:
+	help_page += d
+	if help_page < 0:
+		help_page = 0
+	elif help_page >= HELP.size():
+		help_page = -1
+	queue_redraw()
+
+func _input(event: InputEvent) -> void:
+	# Инструкция открывается поверх игры в любой момент; игра (и сетевая партия) идёт дальше, ввод забирает окно правил.
+	if event is InputEventKey and event.pressed and not event.echo:
+		var k: int = event.physical_keycode
+		if help_page >= 0:
+			if k == KEY_RIGHT or k == KEY_D or k == KEY_SPACE or k == KEY_ENTER:
+				_help_go(1)
+			elif k == KEY_LEFT or k == KEY_A:
+				_help_go(-1)
+			elif k == KEY_H or k == KEY_ESCAPE or k == KEY_F1:
+				help_page = -1
+			get_viewport().set_input_as_handled()
+			return
+		if k == KEY_H or k == KEY_F1:
+			help_page = 0
+			get_viewport().set_input_as_handled()
+			return
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var pt: Vector2 = get_global_transform().affine_inverse() * event.position
+		if HELP_BTN.has_point(pt):
+			help_page = -1 if help_page >= 0 else 0
+			get_viewport().set_input_as_handled()
+			return
+		if help_page >= 0:
+			var bs := _help_btns()
+			if bs[0][0].has_point(pt):
+				_help_go(-1)
+			elif bs[1][0].has_point(pt):
+				_help_go(1)
+			get_viewport().set_input_as_handled()
+			return
+	elif help_page >= 0 and event is InputEventKey:
+		get_viewport().set_input_as_handled()
+		return
+	# В сетевой партии этап один: стрелки не перезапускают поле.
+	if net != "" and state != "play" and event is InputEventKey and event.physical_keycode != KEY_ESCAPE:
+		get_viewport().set_input_as_handled()
+		return
+	super(event)

@@ -141,6 +141,7 @@ body.p-playing{overflow:hidden}
 @media(max-width:700px){.kp-seats{grid-template-columns:1fr 1fr}}
 .kp-page>.p-note:empty{display:none}
 #practicum .kp-h{font-size:20px;margin:0}
+#practicum .kp-rules{margin:10px 0;padding:10px 14px;border-radius:14px;background:rgba(192,139,255,.1);border:1px solid rgba(192,139,255,.45)}#practicum .kp-rules summary{cursor:pointer;font-weight:800}#practicum .kp-rules p{margin:8px 0;line-height:1.45}
 
 /* Телефоны: окно игры и панель кнопок не вылезают за экран */
 @media(max-width:560px){.pf-top{gap:8px}.pf-top .pf-sp{display:none}.p-toast{left:12px;right:12px;bottom:12px}.p-toast img{width:52px;height:52px}.p-league li span{min-width:0;margin-right:8px}}

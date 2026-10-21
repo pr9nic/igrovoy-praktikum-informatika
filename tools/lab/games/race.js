@@ -53,11 +53,11 @@
   const toTokens = prog => prog.flatMap(c => typeof c === 'string' ? [c] : [{open: c.n}, ...toTokens(c.body), 'E']);
   const NAME = {F: 'вперёд', L: 'налево', R: 'направо'}, text = (prog, pad = '') => prog.map(c => typeof c === 'string' ? pad + NAME[c] : `${pad}повтори ${c.n} раз:\n${text(c.body, pad + '    ') || pad + '    …'}`).join('\n');
   const IMG = {}; let artAsked = false;
-  function art() { if (artAsked || typeof Image === 'undefined') return; artAsked = true; const v = document.getElementById('assignmentData').dataset.art || ''; for (const n of ['race_robot', 'race_crate', 'race_flag', 'race_floor', 'race_star']) { const i = new Image(); i.onload = () => { IMG[n] = i; }; i.src = `art/${n}.webp?v=${v}`; } }
+  function art() { if (artAsked || typeof Image === 'undefined') return; artAsked = true; const v = document.getElementById('assignmentData').dataset.art || ''; for (const n of ['race_robot', 'race_crate', 'race_flag', 'race_floor', 'race_floor2', 'race_star']) { const i = new Image(); i.onload = () => { IMG[n] = i; }; i.src = `art/${n}.webp?v=${v}`; } }
   function stage(api, map, dir) {
     art(); const {el} = api, cv = el('canvas', 'ra-field'), w = map[0].length, h = map.length, T = Math.max(34, Math.min(72, Math.floor(620 / Math.max(w, h)))); cv.width = w * T; cv.height = h * T; const g = cv.getContext('2d'); let timer = 0;
     const draw = (p, got) => { g.fillStyle = '#0a0d18'; g.fillRect(0, 0, cv.width, cv.height);
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const ch = map[y][x], px = x * T, py = y * T; if (IMG.race_floor) g.drawImage(IMG.race_floor, px, py, T, T); else { g.fillStyle = (x + y) % 2 ? '#2a3550' : '#313d5c'; g.fillRect(px, py, T, T); }
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const ch = map[y][x], px = x * T, py = y * T; if (IMG.race_floor2 || IMG.race_floor) g.drawImage(IMG.race_floor2 || IMG.race_floor, px, py, T, T); else { g.fillStyle = (x + y) % 2 ? '#2a3550' : '#313d5c'; g.fillRect(px, py, T, T); }
         if (ch === '#') { if (IMG.race_crate) g.drawImage(IMG.race_crate, px + 2, py + 2, T - 4, T - 4); else { g.fillStyle = '#6b5a2a'; g.fillRect(px + 4, py + 4, T - 8, T - 8); } }
         if (ch === 'G') { if (IMG.race_flag) g.drawImage(IMG.race_flag, px + 3, py + 3, T - 6, T - 6); else { g.fillStyle = '#3fba74'; g.beginPath(); g.arc(px + T / 2, py + T / 2, T * 0.34, 0, 7); g.fill(); } }
         if (ch === '*' && !(got && got.has(x + ',' + y))) { if (IMG.race_star) g.drawImage(IMG.race_star, px + T * 0.2, py + T * 0.2, T * 0.6, T * 0.6); else { g.fillStyle = '#ffd34d'; g.beginPath(); g.arc(px + T / 2, py + T / 2, T * 0.2, 0, 7); g.fill(); } } }

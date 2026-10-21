@@ -2,14 +2,20 @@
 // Запуск: godot/workshop/build.sh && python tools/publish.py drafts/game-6-robot-workshop.json && bash tools/trainer/tests/start.sh && node tools/trainer/tests/board.test.mjs
 import {browser, BASE} from './lib.mjs';
 const b = await browser();
-const VK = {Space: 32, Escape: 27};
+const VK = {Space: 32, Escape: 27, KeyH: 72, ArrowRight: 39, ArrowLeft: 37};
 const kev = (type, code) => b.send('Input.dispatchKeyEvent', {type, code, key: code === 'Space' ? ' ' : code.startsWith('Digit') ? code[5] : code, windowsVirtualKeyCode: VK[code] ?? code.charCodeAt(5), nativeVirtualKeyCode: VK[code] ?? code.charCodeAt(5)});
 const key = async (c, p = 90) => { await kev('rawKeyDown', c); await kev('keyUp', c); await b.sleep(p); };
 const st = () => b.ev('return window.arcade');
+const window_ok = s => s && s.game === 'board';
 await b.size(1280, 720);
 await b.send('Page.navigate', {url: BASE + '/courses/game-6-robot-workshop/game/index.html?game=arcade&grade=8&play=board'}); await b.ev('await waitFor(()=>window.arcade&&window.arcade.game==="board",60000)'); await b.sleep(1500);
 let s = await st(); b.check('игра открылась на заставке первого поля: 8 раундов, 4 игрока', s.state === 'intro' && s.rounds === 8 && s.players.length === 4, JSON.stringify(s).slice(0, 200));
 await b.shot('board-intro', 1280, 720, false);
+await key('KeyH', 400); s = await st(); b.check('H открывает правила на первой странице', s.help === 0 && s.state === 'intro', JSON.stringify({help: s.help}));
+await b.shot('board-help-0', 1280, 720, false);
+for (let i = 0; i < 3; i++) await key('ArrowRight', 200); s = await st(); b.check('стрелка листает правила, этап не меняется', s.help === 3 && s.stage === 1, JSON.stringify({help: s.help, stage: s.stage}));
+await b.shot('board-help-3', 1280, 720, false);
+await key('Escape', 400); s = await st(); b.check('Esc закрывает правила и не выходит из игры', s.help === -1 && s.state === 'intro' && window_ok(s), JSON.stringify({help: s.help}));
 await key('Space'); await b.sleep(600); s = await st(); b.check('начался первый раунд, ход игрока', s.state === 'play' && s.cur === 0 && s.phase === 'roll');
 await b.shot('board-start', 1280, 720, false);
 const seen = new Set(); let shots = 0, rights = 0; const t0 = Date.now();

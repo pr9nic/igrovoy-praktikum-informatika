@@ -221,7 +221,15 @@
     clearInterval(battleTimer); kpStop();
     const page = el('section', 'kp-page'), top = el('div', 'bt-top'), body = el('div', 'kp-body'), msg = el('p', 'p-note', ''); msg.setAttribute('role', 'status');
     const back = button('← К играм', 'p-small', () => { kpStop(); list(); }); back.dataset.act = 'kp-back';
-    top.append(back, el('h1', 'kp-h', `🎲 Кодополия с одноклассниками · ${player.className}`)); page.append(top, msg, body); paint(page);
+    top.append(back, el('h1', 'kp-h', `🎲 Кодополия с одноклассниками · ${player.className}`)); const rules = el('details', 'kp-rules'); rules.append(el('summary', '', '📖 Как играть в Кодополию'));
+    for (const [h, t] of [['Цель', 'Ходите по кругу из 28 клеток 8 раундов. Побеждает тот, у кого больше кристаллов знаний; при равенстве — у кого больше байтов. В начале у каждого 10 байтов, за проход «Старта» — ещё 4.'],
+      ['Ход', 'Пробел или кнопка «Бросить» — кубик. Ответы и выбор — клавиши 1–4 или мышью. Подробные правила в самой игре — клавиша H или кнопка «? Правила».'],
+      ['Кристалл', 'Остановился на кристалле — можно купить его за 20 байтов. После покупки он переезжает. Портал переносит прямо к кристаллу.'],
+      ['Кварталы', 'Свободный квартал можно купить; не купил — он уходит на торги. На чужом квартале платишь аренду, но верный ответ «файрволу знаний» делит её пополам. Весь район одного цвета — аренда вдвое больше.'],
+      ['Клетки', '«?» — вопрос за 4 байта; карты «Вирус / Обновление»; магазин предметов; карантин — ответь верно, иначе пропустишь ход.'],
+      ['Мини-игры и события', 'После каждого раунда — мини-игра на скорость для всех. Каждые три раунда — событие: хакатон, DDoS-атака, распродажа и другие.'],
+      ['По сети', 'Выбери лобби или создай своё. Когда соберутся четверо, партия начнётся сама; свободные места займут боты. Создатель лобби ведёт партию — ему нельзя закрывать вкладку.']]) { const p2 = el('p'); p2.append(el('b', '', h + '. '), t); rules.append(p2); }
+    page.append(top, rules, msg, body); paint(page);
     const board = P.games.find(g => g.id === 'board');
     const go = d => { clearInterval(kpTimer); try { sessionStorage.setItem('school4-kp', JSON.stringify({table: d.table, token: d.token, seat: d.seat, players: d.players, title: d.title, at: Date.now()})); } catch {} kpMe = null; list(); open({...board, params: board.params + '&net=1'}, 1); };
     const lobby = d => { kpMe = d; if (d.started) return go(d);
