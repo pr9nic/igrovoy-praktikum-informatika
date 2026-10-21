@@ -59,7 +59,10 @@
     const reset = () => { s = {r: rng(lv.seed + Math.floor(Math.random() * 1e6)), lane: 0, lx: 0, jump: 0, slide: 0, dist: 0, coins: 0, lives: 3, inv: 0, magnet: 0, shield: false, correct: 0, wrong: 0, hits: 0,
       objs: [], next: 0.8, nextQ: 3.0, q: null, flash: '', flashT: 0, speed: 0.45 * lv.speed, run: false, t: 0, combo: 0}; };
     reset();
-    const proj = (lane, z) => { const p = Math.max(0, 1 - z), k = p * p, y = HOR + (H - 40 - HOR) * k, sc = 0.12 + 0.88 * k; return {x: W / 2 + lane * 230 * sc, y, sc}; };
+    // Настоящая перспектива: z от 0 (герой) до 1 (горизонт, 60 м). Вдали всё ползёт, вблизи — проносится.
+    const DEPTH = 60, CAM = 7.5, BOT = H - 34, LANE = 236;
+    const proj = (lane, z) => { const d = Math.max(-0.08, z) * DEPTH, sc = CAM / (CAM + d); return {x: W / 2 + lane * LANE * sc, y: HOR + (BOT - HOR) * sc, sc}; };
+    const projD = (x, d) => { const sc = CAM / (CAM + Math.max(-0.5, d)); return {x: W / 2 + x * LANE * sc, y: HOR + (BOT - HOR) * sc, sc}; };
     const spawn = () => {
       const r = s.r, lane = Math.floor(r() * 3) - 1, roll = r();
       if (roll < 0.25) s.objs.push({t: 'low', lane, z: 1}); else if (roll < 0.45) s.objs.push({t: 'high', lane, z: 1}); else if (roll < 0.62) s.objs.push({t: 'train', lane, z: 1, len: 0.25});
@@ -101,11 +104,72 @@
       if (s.dist >= lv.dist && s.correct >= lv.need) end(true);
     }
     function sprite(img, x, yBottom, h) { if (!img.complete || !img.naturalWidth) return; const w = h * img.naturalWidth / img.naturalHeight; g.drawImage(img, x - w / 2, yBottom - h, w, h); }
+    // Дома вдоль путей: высота и окна — от номера дома, чтобы при беге они не мигали.
+    const house = k => { const h = ((k * 2654435761) >>> 0) / 4294967296; return {h: 3 + h * 7, w: 3 + (h * 7 % 1) * 3, hue: 200 + Math.floor(h * 120)}; };
+    function drawWorld() {
+      const run = s.dist, bob = s.run ? Math.sin(s.t * 18) * 2 : 0;
+      g.save(); g.translate(0, bob);
+      // небо и город у горизонта (верх фоновой картинки), туман
+      if (I.bg.complete && I.bg.naturalWidth) { const iw = I.bg.naturalWidth, ih = I.bg.naturalHeight, sh = ih * 0.47; g.drawImage(I.bg, 0, 0, iw, sh, -10, -6, W + 20, HOR + 30); }
+      else { const sk = g.createLinearGradient(0, 0, 0, HOR); sk.addColorStop(0, '#1b1f4a'); sk.addColorStop(1, '#ff8a5c'); g.fillStyle = sk; g.fillRect(0, 0, W, HOR + 30); }
+      // земля
+      const gr = g.createLinearGradient(0, HOR, 0, H); gr.addColorStop(0, '#2a2f4a'); gr.addColorStop(1, '#141826'); g.fillStyle = gr; g.fillRect(0, HOR, W, H - HOR + 10);
+      // полосы гравия: чередуются по 4 м — бегут навстречу
+      const SEG = 4, off = run % (SEG * 2);
+      for (let d = -off; d < DEPTH; d += SEG) {
+        const a = projD(-1.75, d), b = projD(1.75, d), c = projD(1.75, d + SEG), e = projD(-1.75, d + SEG);
+        g.fillStyle = Math.floor((d + off) / SEG) % 2 ? '#3a3f5c' : '#33384f';
+        g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c.x, c.y); g.lineTo(e.x, e.y); g.fill();
+      }
+      // шпалы каждые 1,2 м под каждой колеёй
+      const TIE = 1.2, toff = run % TIE;
+      for (let d = DEPTH - toff; d > -0.6; d -= TIE) {
+        for (let l = -1; l <= 1; l++) {
+          const a = projD(l - 0.36, d), b = projD(l + 0.36, d), th = Math.max(1, 9 * a.sc);
+          g.fillStyle = `rgba(122,84,52,${Math.min(1, 0.25 + a.sc * 1.2)})`; g.fillRect(a.x, a.y - th / 2, b.x - a.x, th);
+        }
+      }
+      // рельсы: по два на колею, с блеском
+      for (let l = -1; l <= 1; l++) for (const off2 of [-0.24, 0.24]) {
+        const a = projD(l + off2, DEPTH), b = projD(l + off2, -0.6);
+        const rg = g.createLinearGradient(0, a.y, 0, b.y); rg.addColorStop(0, 'rgba(160,190,230,.25)'); rg.addColorStop(1, 'rgba(220,240,255,.95)');
+        g.strokeStyle = rg; g.lineWidth = 1; g.beginPath(); g.moveTo(a.x, a.y);
+        for (const dd of [DEPTH * 0.5, DEPTH * 0.2, 8, 3, 1, -0.6]) { const q = projD(l + off2, dd); g.lineWidth = Math.max(1, 6 * q.sc); g.lineTo(q.x, q.y); }
+        g.stroke();
+      }
+      // дома, ограждения и фонари по сторонам — всё бежит навстречу
+      const HS = 9, hoff = run % HS, k0 = Math.floor(run / HS);
+      for (let n = Math.ceil(DEPTH / HS); n >= 0; n--) {
+        const d = n * HS - hoff, k = k0 + n;
+        for (const side of [-1, 1]) {
+          const hs = house(k * 2 + (side > 0 ? 1 : 0)), x0 = side * 2.4, x1 = side * (2.4 + hs.w * 0.5);
+          const nb = projD(x0, d), fb = projD(x1, d), nt = projD(x0, d + HS * 0.8);
+          const top = nb.y - hs.h * 60 * nb.sc, ftop = nt.y - hs.h * 60 * nt.sc;
+          // фасад, обращённый к путям
+          g.fillStyle = `hsl(${hs.hue} 35% ${10 + nb.sc * 14}%)`;
+          g.beginPath(); g.moveTo(nb.x, nb.y); g.lineTo(nb.x, top); g.lineTo(nt.x, ftop); g.lineTo(nt.x, nt.y); g.fill();
+          // окна
+          g.fillStyle = `hsla(${(hs.hue + 160) % 360} 90% 70% / ${0.35 + nb.sc * 0.5})`;
+          for (let fy = 1; fy < hs.h; fy += 1.4) for (let fx = 0.15; fx < 0.8; fx += 0.25) {
+            const p1 = projD(x0, d + HS * 0.8 * fx), wy = p1.y - fy * 60 * p1.sc, ws = Math.max(1, 14 * p1.sc);
+            if (((k * 31 + fy * 7 + fx * 13) | 0) % 3) g.fillRect(p1.x - (side > 0 ? 0 : ws * 0.6), wy, ws * 0.6, ws);
+          }
+          // фонарь
+          const lp = projD(side * 2.05, d), lh = 150 * lp.sc;
+          g.fillStyle = '#20263d'; g.fillRect(lp.x - 2 * lp.sc - 1, lp.y - lh, 4 * lp.sc + 2, lh);
+          g.fillStyle = 'rgba(125,249,255,.9)'; g.beginPath(); g.arc(lp.x, lp.y - lh, Math.max(2, 9 * lp.sc), 0, 7); g.fill();
+          g.fillStyle = 'rgba(125,249,255,.12)'; g.beginPath(); g.arc(lp.x, lp.y - lh, Math.max(4, 40 * lp.sc), 0, 7); g.fill();
+        }
+      }
+      // туман у горизонта
+      const fog = g.createLinearGradient(0, HOR - 30, 0, HOR + 70); fog.addColorStop(0, 'rgba(255,170,140,0)'); fog.addColorStop(0.45, 'rgba(255,170,140,.35)'); fog.addColorStop(1, 'rgba(255,170,140,0)');
+      g.fillStyle = fog; g.fillRect(0, HOR - 30, W, 100);
+      g.restore();
+      return bob;
+    }
     function draw() {
-      if (I.bg.complete && I.bg.naturalWidth) g.drawImage(I.bg, 0, 0, W, H); else { g.fillStyle = '#1a2348'; g.fillRect(0, 0, W, H); }
-      g.fillStyle = 'rgba(10,14,34,.25)'; g.fillRect(0, 0, W, H);
-      // дорожки
-      for (let l = -1.5; l <= 1.5; l += 1) { const a = proj(l, 1), b = proj(l, -0.05); g.strokeStyle = 'rgba(125,249,255,.35)'; g.lineWidth = 3; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
+      const bob = drawWorld();
+      g.save(); g.translate(0, bob);
       const objs = s.objs.filter(o => !o.done || o.t === 'train').sort((a, b) => b.z - a.z);
       for (const o of objs) {
         if (o.z > 1.05) continue; const p = proj(o.lane, Math.max(o.z, -0.05));
@@ -114,10 +178,16 @@
         const h = {low: 70, high: 150, train: 230, coin: 40, magnet: 50, shield: 50}[o.t] * p.sc * 1.6;
         sprite(I[o.t], p.x, p.y + (o.t === 'coin' ? -30 * p.sc : 0), h);
       }
-      // герой
-      const hp = proj(s.lx, 0), up = s.jump > 0 ? Math.sin((1 - s.jump / 0.62) * Math.PI) * 120 : 0, img = s.slide > 0 ? I.slide : s.jump > 0 ? I.jump : I.run[Math.floor(s.t * 8) % 2];
+      // герой и его тень на шпалах
+      const hp = proj(s.lx, 0), up = s.jump > 0 ? Math.sin((1 - s.jump / 0.62) * Math.PI) * 120 : 0, img = s.slide > 0 ? I.slide : s.jump > 0 ? I.jump : I.run[Math.floor(s.t * 11) % 2];
+      g.fillStyle = `rgba(0,0,0,${0.45 - up / 400})`; g.beginPath(); g.ellipse(hp.x, hp.y - 4, 46 - up / 6, 12 - up / 20, 0, 0, 7); g.fill();
       if (!(s.inv > 0 && Math.floor(s.t * 14) % 2)) sprite(img, hp.x, hp.y - up, s.slide > 0 ? 120 : 190);
       if (s.shield) { g.strokeStyle = 'rgba(125,249,255,.8)'; g.lineWidth = 4; g.beginPath(); g.arc(hp.x, hp.y - up - 90, 80, 0, 7); g.stroke(); }
+      g.restore();
+      // линии скорости по краям
+      if (s.run) { const sp = s.speed * (1 + Math.min(0.6, s.dist / 2500)); g.strokeStyle = `rgba(255,255,255,${0.08 + sp * 0.25})`; g.lineWidth = 2;
+        for (let k = 0; k < 14; k++) { const a = ((k * 97 + s.t * 900 * sp) % 400) / 400, side = k % 2 ? 1 : -1, x = W / 2 + side * (W * 0.38 + a * W * 0.2), y = HOR + 40 + ((k * 53) % 300);
+          g.beginPath(); g.moveTo(x, y); g.lineTo(x + side * 60 * a, y + 18 * a); g.stroke(); } }
       // вопрос и счёт
       g.textAlign = 'center';
       if (s.q) { g.fillStyle = 'rgba(10,14,34,.88)'; g.fillRect(W / 2 - 300, 14, 600, 56); g.fillStyle = '#fff'; g.font = '800 28px system-ui'; g.fillText(s.q.q, W / 2, 52); }
