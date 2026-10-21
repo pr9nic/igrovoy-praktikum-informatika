@@ -197,14 +197,15 @@
   const CSS = `
 #lab .gr-cols{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start}
 @media(max-width:900px){#lab .gr-cols{grid-template-columns:1fr}}
-#lab .gr-map{display:block;width:100%;height:auto;max-height:min(62vh,540px);background:radial-gradient(circle at 30% 20%,#1a2a4d,#0f1730 70%);border:1px solid #2c3a5e;border-radius:12px;touch-action:manipulation;user-select:none}
+#lab .gr-map{display:block;width:100%;height:auto;max-height:min(62vh,540px);background:linear-gradient(rgba(10,16,36,.35),rgba(10,16,36,.35)),url(art/bg_graphs.webp?v=1) center/cover,#1a2a4d;border:2px solid #8a6a3a;border-radius:12px;touch-action:manipulation;user-select:none}
 #lab .gr-edge{stroke:#4b5f8f;stroke-width:4;stroke-linecap:round;fill:none}
 #lab .gr-edge.on{stroke:#ffd34d;stroke-width:7}
 #lab .gr-edge.into{stroke:#7fe3c8;stroke-width:5}
 #lab .gr-edge.dead{stroke:#34405f;stroke-dasharray:7 7}
 #lab .gr-edge.ask{stroke:#ff8a5c;stroke-width:6}
 #lab .gr-w circle{fill:#0f1730;stroke:#5a6f9f;stroke-width:2}#lab .gr-w text{fill:#ffe08a;font-size:15px;font-weight:800;text-anchor:middle}
-#lab .gr-node{cursor:pointer;outline:none}#lab .gr-node circle{fill:#243253;stroke:#8fa6d6;stroke-width:3;transition:fill .15s}
+#lab .gr-node{cursor:pointer;outline:none}#lab .gr-node image{pointer-events:none}.gr-node text.gr-label{font-size:17px;paint-order:stroke;stroke:#0b1024;stroke-width:5px;stroke-linejoin:round}
+.gr-node circle{fill:rgba(20,30,56,.45);stroke:#8fa6d6;stroke-width:3;transition:fill .15s}
 #lab .gr-node text{fill:#fff;font-weight:800;font-size:19px;text-anchor:middle;pointer-events:none}
 #lab .gr-node:hover circle,#lab .gr-node:focus-visible circle{stroke:#ffd34d;stroke-width:4}
 #lab .gr-node.end circle{stroke:#ff8a5c;stroke-width:4}#lab .gr-node.via circle{stroke:#c58cff;stroke-width:5}
@@ -244,7 +245,8 @@
     return `M${s.x.toFixed(1)},${s.y.toFixed(1)} Q${c.x.toFixed(1)},${c.y.toFixed(1)} ${e.x.toFixed(1)},${e.y.toFixed(1)}`; };
   function nodeEl(p, name, cls, onPick, label) {
     const g = sv('g', {class: 'gr-node ' + cls, tabindex: onPick ? 0 : -1, role: onPick ? 'button' : 'img', 'aria-label': label || name});
-    g.append(sv('circle', {cx: p.x, cy: p.y, r: 21}), sv('text', {x: p.x, y: p.y + 7}, name));
+    // Город — картинка из Codex (town_0…7) в кольце; буква — на табличке под ним.
+    g.append(sv('circle', {cx: p.x, cy: p.y, r: 23}), sv('image', {href: `art/town_${name.codePointAt(0) % 8}.webp?v=1`, x: p.x - 26, y: p.y - 30, width: 52, height: 52}), sv('text', {x: p.x, y: p.y + 38, class: 'gr-label'}, name));
     if (onPick) { g.addEventListener('click', onPick); g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(); } }); }
     return g;
   }
@@ -332,7 +334,7 @@
     if (api.debugHost) window.labSet = a => { if (done) return; const ans = Object.assign({seed}, a || {}); const r = check(lv, ans); if (r.ok) win(r); else say(r.msg, 'bad'); };
   }
 
-  LAB.register({id: 'graphs', bg: 'bg_ipnet', title: 'Карта дорог', genre: 'графы и маршруты', art: '🗺️', color: '#ffb35c', unit: 'Карта', minutes: 40,
+  LAB.register({id: 'graphs', bg: 'bg_graphs', hero: 'host_navigator', title: 'Карта дорог', genre: 'графы и маршруты', art: '🗺️', color: '#ffb35c', unit: 'Карта', minutes: 40,
     about: 'Прокладывай кратчайшие маршруты по таблице расстояний, сопоставляй таблицу со схемой дорог и считай пути волной — задания 4 ОГЭ, 1 и 13 ЕГЭ на живой карте.',
     levels: grade => grade >= 10 ? L1011 : L89, mount, check, solve, make, wave, LEVELS: L89.concat(L1011)});
 })();

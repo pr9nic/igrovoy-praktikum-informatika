@@ -161,6 +161,8 @@
     const help = el('p', 'tu-help'); help.innerHTML = 'Команды: <code>forward(n)</code>, <code>back(n)</code>, <code>right(угол)</code>, <code>left(угол)</code>, <code>penup()</code>, <code>pendown()</code> (или по-русски: <code>вперёд</code>, <code>назад</code>, <code>направо</code>, <code>налево</code>, <code>поднять_хвост</code>, <code>опустить_хвост</code>). Черепаха стоит в точке (0, 0), смотрит вверх, хвост опущен. Один шаг — одна клетка.';
     task0.append(el('h2', '', lv.title), brief, help);
     const START = {x: 0, y: 0, h: 90, pen: true, n: 0};
+    // Черепаха — спрайт из Codex (вид сверху, голова вверх); пока не загрузился — рисуем кружками.
+    const SPRITE = new Image(); SPRITE.src = 'art/turtle_top.webp?v=1'; SPRITE.addEventListener('load', () => { if (!timer && view) render([], START); });
     const fit = (...lists) => { const pts = [[0, 0]]; for (const l of lists) for (const s of l) pts.push([s[0], s[1]], [s[2], s[3]]); const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
       let x0 = Math.floor(Math.min(...xs)) - 1, x1 = Math.ceil(Math.max(...xs)) + 1, y0 = Math.floor(Math.min(...ys)) - 1, y1 = Math.ceil(Math.max(...ys)) + 1;
       const cap = v => Math.max(-60, Math.min(60, v)); x0 = cap(x0); x1 = cap(x1); y0 = cap(y0); y1 = cap(y1); while (x1 - x0 < 8) { x0--; x1++; } while (y1 - y0 < 6) { y0--; y1++; } return {x0, x1, y0, y1}; };
@@ -177,8 +179,9 @@
       if (!count) { g.strokeStyle = 'rgba(255,211,77,.75)'; g.lineWidth = 3; g.setLineDash([7, 6]); g.beginPath(); for (const s of t.segs) { g.moveTo(X(s[0]), Y(s[1])); g.lineTo(X(s[2]), Y(s[3])); } g.stroke(); g.setLineDash([]); }
       g.strokeStyle = '#7fe3c8'; g.lineWidth = 3.5; g.beginPath(); for (const s of segs) { g.moveTo(X(s[0]), Y(s[1])); g.lineTo(X(s[2]), Y(s[3])); } g.stroke();
       g.save(); g.translate(X(tu.x), Y(tu.y)); g.rotate(-tu.h * Math.PI / 180); const z = Math.max(9, Math.min(16, C * 0.6));
-      g.fillStyle = '#3d8b5a'; g.beginPath(); g.arc(z * 0.95, 0, z * 0.32, 0, 7); g.fill();
-      g.fillStyle = tu.pen ? '#5fd38d' : '#2c5a40'; g.strokeStyle = '#d8ffe6'; g.lineWidth = 2; g.beginPath(); g.ellipse(0, 0, z * 0.75, z * 0.6, 0, 0, 7); g.fill(); g.stroke(); g.restore();
+      if (SPRITE && SPRITE.complete && SPRITE.naturalWidth) { g.rotate(Math.PI / 2); g.globalAlpha = tu.pen ? 1 : 0.6; const s = z * 2.6; g.drawImage(SPRITE, -s / 2, -s / 2, s, s); g.globalAlpha = 1; g.restore(); }
+      else { g.fillStyle = '#3d8b5a'; g.beginPath(); g.arc(z * 0.95, 0, z * 0.32, 0, 7); g.fill();
+      g.fillStyle = tu.pen ? '#5fd38d' : '#2c5a40'; g.strokeStyle = '#d8ffe6'; g.lineWidth = 2; g.beginPath(); g.ellipse(0, 0, z * 0.75, z * 0.6, 0, 0, 7); g.fill(); g.stroke(); g.restore(); }
     }
     function play(code, done) {
       clearInterval(timer); const frames = [], segs = []; let err = '';
@@ -216,7 +219,7 @@
     return () => clearInterval(timer);
   }
 
-  LAB.register({id: 'turtle', bg: 'bg_executors', title: 'Черепаха', genre: 'исполнитель, ЕГЭ №6', art: '🐢', color: '#5fd38d', unit: 'Задача', minutes: 40,
+  LAB.register({id: 'turtle', bg: 'bg_turtle', hero: 'host_turtle', title: 'Черепаха', genre: 'исполнитель, ЕГЭ №6', art: '🐢', color: '#5fd38d', unit: 'Задача', minutes: 40,
     about: 'Черепаха рисует по программе на Python: forward, right, penup и циклы for. Нарисуй фигуру по образцу, найди ошибку, сократи программу и посчитай точки внутри фигур — как в задании 6 ЕГЭ.',
     levels: grade => grade >= 10 ? HARD : BASE, mount, check, solve, BASE, HARD, task, draw, interior, shapeKey, codeLines});
 })();

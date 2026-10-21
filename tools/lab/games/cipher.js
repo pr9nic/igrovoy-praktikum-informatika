@@ -242,7 +242,7 @@
     host.addEventListener('click', e => { if (forced && e.target.closest('[data-act=run]')) { e.stopPropagation(); e.preventDefault(); const r = check(lv, forced); if (r.ok) api.finish(r.stars, r.msg); } }, true);
     show(); if (api.debugHost) window.labSet = a => { forced = a; };
   }
-  LAB.register({id: 'cipher', title: 'Шифровальня', genre: 'защита информации', art: '🔐', color: '#6c8cff', unit: 'Задание', minutes: 45,
+  LAB.register({id: 'cipher', bg: 'bg_cipher', hero: 'host_spy', title: 'Шифровальня', genre: 'защита информации', art: '🔐', color: '#6c8cff', unit: 'Задание', minutes: 45,
     about: 'Зашифруй и взломай шифр Цезаря на колесе, найди ключ частотным анализом, прочитай скиталу и перестановку столбцов, освой шифр Виженера и посчитай, сколько ключей нужно перебрать. В 10–11 классах — учебный RSA с открытым ключом.',
     levels: grade => grade >= 10 ? LEVELS : LEVELS.filter(l => !l.old), mount, check, solve: lv => ({seed: 1, answers: taskOf(lv, 1).map(st => st.answer)}),
     LEVELS, taskOf, caesar, vig, scyEnc, scyDec, permEnc, permDec, pad, gcd, mpow, inv, counts, norm, int, readable, ALPHABET: A, WORDS, PHRASES, KEYS, KNOWN});

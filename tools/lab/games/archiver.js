@@ -274,7 +274,7 @@
     host.addEventListener('click', e => { if (forced && e.target.closest('[data-act=run]')) { e.stopPropagation(); e.preventDefault(); const r = check(lv, forced); if (r.ok) api.finish(r.stars, r.msg); else say(r.msg, 'bad'); } }, true);
     if (api.debugHost) window.labSet = a => { forced = a; for (const b of host.querySelectorAll('[data-act=run]')) b.disabled = false; };
   }
-  LAB.register({id: 'archiver', title: 'Архиватор', genre: 'сжатие данных', art: '🗜', color: '#4dd4c0', unit: 'Задание', minutes: 45,
+  LAB.register({id: 'archiver', bg: 'bg_archiver', hero: 'host_archivist', title: 'Архиватор', genre: 'сжатие данных', art: '🗜', color: '#4dd4c0', unit: 'Задание', minutes: 45,
     about: 'Робот-архиватор пакует файлы, а ты подсказываешь, как записать их короче: серии RLE, неравномерные коды и условие Фано, дерево Хаффмана и задание 4 ЕГЭ. Варианты каждый раз новые, ответы проверяются перебором, после ошибки — разбор.',
     levels: grade => grade <= 8 ? LEVELS.slice(0, 9) : LEVELS, mount, check, solve, LEVELS, G, variant, huff, huffRef, minPair, fano, clash, fits, search, shortest, rle, rleText, parseRle, freeRoots});
 })();

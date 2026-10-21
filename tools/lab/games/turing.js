@@ -174,7 +174,7 @@
     if (api.debugHost) window.labSet = p => { for (const k of Object.keys(prog)) delete prog[k]; Object.assign(prog, JSON.parse(JSON.stringify(p))); for (const [k, r] of Object.entries(prog)) nq = Math.min(MAXQ, Math.max(nq, Number(k.split('|')[0]), typeof r[2] === 'number' ? r[2] : 0)); changed(); };
     return () => { clearInterval(timer); document.removeEventListener('keydown', onKey); };
   }
-  LAB.register({id: 'turing', bg: 'bg_executors', title: 'Машина Тьюринга', genre: 'теория алгоритмов', art: '📼', color: '#f0a1ff', unit: 'Задача', minutes: 45,
+  LAB.register({id: 'turing', bg: 'bg_turing', hero: 'host_tape', title: 'Машина Тьюринга', genre: 'теория алгоритмов', art: '📼', color: '#f0a1ff', unit: 'Задача', minutes: 45,
     about: 'Составь таблицу правил для машины Тьюринга: что записать, куда сдвинуть головку и в какое состояние перейти. Головка бежит по ленте, а программа проверяется на нескольких лентах — от инверсии и двоичного +1 до палиндрома и копии слова.',
     levels: grade => grade <= 10 ? LEVELS.slice(0, 8) : LEVELS, mount, check, solve, LEVELS, run, size, init, step, parseRef, LIMIT});
 })();

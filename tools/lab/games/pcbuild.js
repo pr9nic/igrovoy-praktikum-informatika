@@ -75,7 +75,7 @@
     }
   }
   const solve = lv => lv.kind === 'build' ? Object.fromEntries(lv.parts.map(p => [p, p])) : lv.kind === 'roles' ? Object.fromEntries(pickDevs(lv.n, LEVELS.indexOf(lv) + 7)) : lv.kind === 'config' ? cheapest(lv) : CYCLE.map((_, i) => i);
-  LAB.register({id: 'pcbuild', bg: 'bg_factory', title: 'Собери компьютер', genre: 'устройство компьютера', art: '🖥', color: '#5cc8ff', unit: 'Задание', minutes: 35,
+  LAB.register({id: 'pcbuild', bg: 'bg_factory', hero: 'host_tech', title: 'Собери компьютер', genre: 'устройство компьютера', art: '🖥', color: '#5cc8ff', unit: 'Задание', minutes: 35,
     about: 'Поставь процессор, память, накопитель и видеокарту в их гнёзда и включи компьютер; разложи устройства по ролям; подбери конфигурацию под задачу и бюджет; разберись, как процессор выполняет команды.',
     levels: () => LEVELS, mount, check, solve, LEVELS, cheapest, cfgCost});
 })();

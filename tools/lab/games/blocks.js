@@ -141,6 +141,7 @@
       runB.dataset.act = 'run';
       side.append(el('p', 'lab-note', m.hint), el('p', 'lab-note', 'Подсветка — зона стройки. Пример: for x in range(6, 9): place(x, 0)'), ta, runB);
       wrap.append(cv, side); host.append(wrap, msg); render(m.g, m.start);
+      for (const im of Object.values(I)) if (!im.complete) im.addEventListener('load', () => { if (!anim) render(m.g, m.start); });
       if (api.debugHost) window.labSet = a => { ta.value = typeof a === 'string' ? a : a.code; };
       return () => { cancelAnimationFrame(anim); if (api.debugHost) delete window.labSet; };
     }

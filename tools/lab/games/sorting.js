@@ -316,7 +316,7 @@ button.so-car:disabled{cursor:default}
     return () => { timers.forEach(clearTimeout); };
   }
 
-  LAB.register({id: 'sorting', bg: 'bg_factory', title: 'Сортировочная станция', genre: 'сортировка и поиск', art: '🚃', color: '#5ac8ff', unit: 'Смена', minutes: 40,
+  LAB.register({id: 'sorting', bg: 'bg_sorting', hero: 'host_dispatcher', title: 'Сортировочная станция', genre: 'сортировка и поиск', art: '🚃', color: '#5ac8ff', unit: 'Смена', minutes: 40,
     about: 'Вагоны на сортировочной горке — элементы массива. Пузырёк, вставки и выбор обмен за обменом со счётчиками, двоичный поиск за ⌈log2 n⌉ вопросов, слияние составов, прогноз числа операций и устойчивость.',
     levels, mount, check, solve, trace: {bubble: bubbleTrace, insertion: insertionTrace, selection: selectionSwaps}, COUNT});
 })();

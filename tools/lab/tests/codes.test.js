@@ -3,7 +3,7 @@ const path = require('path'), dir = path.join(__dirname, '..');
 require(path.join(dir, 'core.js')); require(path.join(dir, 'games', 'codes.js'));
 let bad = 0; const check = (name, ok, info = '') => { if (!ok) bad++; console.log((ok ? 'ok   ' : 'FAIL ') + name + (info !== '' ? ' — ' + info : '')); };
 const g = LAB.games.find(x => x.id === 'codes'), L = g.lib, A = L.A;
-check('игра зарегистрирована с нужными полями', !!g && g.bg === 'bg_detective' && typeof g.mount === 'function' && g.unit && g.minutes > 0);
+check('игра зарегистрирована с нужными полями', !!g && g.bg === 'bg_codes' && typeof g.mount === 'function' && g.unit && g.minutes > 0);
 
 // Независимый перебор: все разбиения строки бит на коды таблицы.
 const parses = (bits, codes) => { if (!bits) return ['']; const out = []; for (const [c, v] of Object.entries(codes)) if (bits.startsWith(v)) for (const rest of parses(bits.slice(v.length), codes)) out.push(c + rest); return out; };

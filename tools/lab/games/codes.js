@@ -253,7 +253,7 @@
     return () => { if (api.debugHost && window.labSet) delete window.labSet; };
   }
 
-  LAB.register({id: 'codes', bg: 'bg_detective', title: 'Шифровальщик', genre: 'кодирование и шифры', art: '🔐', color: '#c58cff', unit: 'Уровень', minutes: 40,
+  LAB.register({id: 'codes', bg: 'bg_codes', hero: 'host_telegraph', title: 'Шифровальщик', genre: 'кодирование и шифры', art: '🔐', color: '#c58cff', unit: 'Уровень', minutes: 40,
     about: 'Шифровальное бюро Кодограда: колесо Цезаря, Атбаш, таблица замены и шифр Виженера, двоичные коды переменной длины, условие Фано и взлом шифра по частоте букв.',
     levels, mount, check, solve: lv => answerOf(lv),
     lib: {A, caesar, atbash, vigenere, encode, decodings, uniquelyDecodable, isPrefixFree, conflicts, freeCode, freq, norm}});
