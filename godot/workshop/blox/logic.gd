@@ -15,7 +15,8 @@ const FALL_Y := -14.0
 # Виды частей мира: solid — опора, kill — смертельный блок, check — контрольная точка, finish — финиш,
 # mover — движущаяся платформа, spin — вращающаяся балка-убийца, vanish — исчезающий блок, glass — плитка моста,
 # coin — Кодобакс, pad — кнопка тайкуна или магазина, orb — бит для симулятора, deco/door/sign — только картинка.
-const SOLID := ["solid", "check", "finish", "mover", "glass", "vanish", "wall"]
+const SOLID := ["solid", "check", "finish", "mover", "glass", "vanish", "wall", "bounce", "conv"]
+const NEAR := 26.0        # физика считает только блоки ближе этого расстояния (длинные обби — сотни блоков)
 
 # ---------- мир ----------
 
@@ -33,13 +34,37 @@ class World:
 	var coins := 0
 	var won := false
 	var touching: Dictionary = {}     # pad/orb, которых герой касается сейчас (событие — только при входе)
+	var near: Array = []              # индексы частей рядом с героем
+	var near_at := Vector3(1e9, 0, 0)
+	var movers: Array = []
+	var bounce_t := -10.0
 
 	func add(p: Dictionary) -> int:
 		if not p.has("k"):
 			p["k"] = "solid"
 		p["c"] = p["p"]                 # текущий центр (у движущихся меняется)
 		parts.append(p)
+		if p.has("a"):
+			movers.append(parts.size() - 1)
+		near_at = Vector3(1e9, 0, 0)    # пересчитать соседей
 		return parts.size() - 1
+
+	func refresh_near(force: bool = false) -> void:
+		if not force and pos.distance_to(near_at) < 4.0:
+			return
+		near_at = pos
+		near = []
+		for i in parts.size():
+			var p: Dictionary = parts[i]
+			var h: Vector3 = p["s"] / 2.0 + (p.get("a", Vector3.ZERO) as Vector3).abs() + Vector3(1, 1, 1) * (float(p.get("L", 0.0)) / 2.0)
+			var c: Vector3 = p["p"]
+			var d := Vector3(maxf(0.0, absf(pos.x - c.x) - h.x), maxf(0.0, absf(pos.y - c.y) - h.y), maxf(0.0, absf(pos.z - c.z) - h.z))
+			if d.length() < NEAR:
+				near.append(i)
+
+	static func laser_on(p: Dictionary, tt: float) -> bool:
+		var per: float = p.get("per", 2.4)
+		return fposmod(tt + float(p.get("ph", 0.0)), per) < per * 0.5
 
 	func center(i: int) -> Vector3:
 		return parts[i]["c"]
@@ -74,14 +99,16 @@ class World:
 		var ev: Array = []
 		t += dt
 		var carry := Vector3.ZERO
-		for i in parts.size():
+		for i in movers:
 			var p: Dictionary = parts[i]
-			if p["k"] == "mover":
-				var nc := mover_at(p, t)
-				if on_floor and floor_i == i:
-					carry = nc - p["c"]
-				p["c"] = nc
+			var nc := mover_at(p, t)
+			if on_floor and floor_i == i and p["k"] == "mover":
+				carry = nc - p["c"]
+			p["c"] = nc
+		if on_floor and floor_i >= 0 and parts[floor_i]["k"] == "conv":
+			carry += (parts[floor_i]["dir"] as Vector3) * dt       # лента тащит героя
 		pos += carry
+		refresh_near()
 		vel.x = mv.x * SPEED
 		vel.z = mv.y * SPEED
 		vel.y -= GRAV * dt
@@ -92,7 +119,7 @@ class World:
 		# По осям: X, Z, затем Y — так герой скользит вдоль стен и встаёт на опоры.
 		for ax in [0, 2]:
 			pos[ax] += vel[ax] * dt
-			for i in parts.size():
+			for i in near:
 				if solid(i) and overlap(i, pos):
 					var c: Vector3 = parts[i]["c"]
 					var h: Vector3 = parts[i]["s"] / 2.0
@@ -105,7 +132,7 @@ class World:
 		pos.y += vel.y * dt
 		var was := on_floor
 		on_floor = false
-		for i in parts.size():
+		for i in near:
 			if solid(i) and overlap(i, pos):
 				var c: Vector3 = parts[i]["c"]
 				var h: Vector3 = parts[i]["s"] / 2.0
@@ -120,17 +147,24 @@ class World:
 			floor_i = -1
 		elif not was:
 			ev.append({"e": "land"})
+			if parts[floor_i]["k"] == "bounce":
+				# батут подбрасывает высоко
+				vel.y = float(parts[floor_i].get("power", 20.0))
+				bounce_t = t
+				on_floor = false
+				floor_i = -1
+				ev.append({"e": "bounce"})
 		# Стеклянная плитка с неверным ответом лопается под героем.
-		if on_floor and parts[floor_i]["k"] == "glass" and not parts[floor_i].get("ok", false):
+		if on_floor and floor_i >= 0 and parts[floor_i]["k"] == "glass" and not parts[floor_i].get("ok", false):
 			parts[floor_i]["broken"] = true
 			wrong += 1
 			on_floor = false
 			ev.append({"e": "glass", "i": floor_i})
 		var now := {}
-		for i in parts.size():
+		for i in near:
 			var p: Dictionary = parts[i]
 			var k: String = p["k"]
-			if k == "kill" and overlap(i, pos, 0.02):
+			if (k == "kill" or (k == "laser" and laser_on(p, t))) and overlap(i, pos, 0.02):
 				return ev + die("kill")
 			if k == "spin" and _spin_hit(p):
 				return ev + die("spin")
@@ -173,6 +207,7 @@ class World:
 	func die(why: String) -> Array:
 		deaths += 1
 		pos = spawn
+		refresh_near(true)
 		vel = Vector3.ZERO
 		on_floor = false
 		floor_i = -1
@@ -180,7 +215,7 @@ class World:
 
 	# Есть ли опора чуть впереди и ниже (для автопилота и ботов).
 	func floor_at(at: Vector3) -> bool:
-		for i in parts.size():
+		for i in near:
 			if solid(i):
 				var c: Vector3 = parts[i]["c"]
 				var h: Vector3 = parts[i]["s"] / 2.0
@@ -189,9 +224,9 @@ class World:
 		return false
 
 	func danger_at(at: Vector3) -> bool:
-		for i in parts.size():
+		for i in near:
 			var k: String = parts[i]["k"]
-			if k == "kill" and overlap(i, at, 0.1):
+			if (k == "kill" or (k == "laser" and laser_on(parts[i], t))) and overlap(i, at, 0.1):
 				return true
 			if k == "glass" and not parts[i].get("ok", false) and not parts[i].get("broken", false):
 				var c: Vector3 = parts[i]["c"]
@@ -223,6 +258,42 @@ static func question(grade: int, rng: RandomNumberGenerator, n_opts: int = 3) ->
 			opts.append(str(o))
 	KP.shuffle(opts, rng)
 	return {"q": str(d["q"]), "code": d.get("code", []), "opts": opts, "right": opts.find(right)}
+
+# Логическое выражение со значением: [текст, значение]. Глубина и операции — по классу.
+static func logic_expr(grade: int, rng: RandomNumberGenerator, vals: Dictionary, depth: int) -> Array:
+	var names := vals.keys()
+	if depth <= 0:
+		var n: String = names[rng.randi() % names.size()]
+		if rng.randf() < 0.3:
+			return ["не " + n, not vals[n]]
+		return [n, vals[n]]
+	var a := logic_expr(grade, rng, vals, depth - 1)
+	var b := logic_expr(grade, rng, vals, 0)
+	var r := rng.randi() % (3 if grade >= 9 else 2)
+	var at: String = ("(%s)" % a[0]) if depth > 1 else a[0]
+	match r:
+		0:
+			return ["%s и %s" % [at, b[0]], a[1] and b[1]]
+		1:
+			return ["%s или %s" % [at, b[0]], a[1] or b[1]]
+	return ["не (%s и %s)" % [at, b[0]], not (a[1] and b[1])]
+
+static func logic_row(grade: int, rng: RandomNumberGenerator, vals: Dictionary) -> Array:
+	# Три разных выражения: ровно одно истинно.
+	var depth := 1 if grade <= 8 else 2
+	var t: Array = []
+	var f: Array = []
+	for _k in 200:
+		var e := logic_expr(grade, rng, vals, depth if rng.randf() < 0.7 else 1)
+		if (t + f).any(func(x): return x[0] == e[0]):
+			continue
+		if e[1] and t.is_empty():
+			t.append(e)
+		elif not e[1] and f.size() < 2:
+			f.append(e)
+		if t.size() == 1 and f.size() == 2:
+			break
+	return t + f
 
 static func stars(mistakes: int) -> int:
 	return 3 if mistakes <= 1 else (2 if mistakes <= 4 else 1)
@@ -361,6 +432,134 @@ class Track:
 		lava_under(z0, c.z + 1.0, c.y - 7.0, 12.0)
 		plat(5.0, 6.0, 0.6, 0.0, "studs")
 
+	func logic(rows: int) -> void:
+		# Логический мост: в каждом ряду три плитки с выражениями, держит только ИСТИННОЕ.
+		var vals := {"A": rng.randf() < 0.5, "B": rng.randf() < 0.5, "C": rng.randf() < 0.5}
+		if vals["A"] == vals["B"] and vals["B"] == vals["C"]:
+			vals["B"] = not vals["B"]
+		var lr: Script = load("res://blox/logic.gd")
+		plat(4.0, 9.0, 2.5, 0.0, "studs")
+		var sign := "A = %d,  B = %d,  C = %d  ·  держит только ИСТИНА" % [int(vals["A"]), int(vals["B"]), int(vals["C"])]
+		w.add({"p": Vector3(c.x, c.y + 3.5, c.z - 0.2), "s": Vector3(9.0, 2.0, 0.2), "k": "sign", "m": "sign", "text": sign})
+		quiz.append({"q": sign, "logic": true})
+		var z0 := c.z
+		for k in rows:
+			var row: Array = lr.logic_row(grade, rng, vals)
+			KP.shuffle(row, rng)
+			var z := z0 + 1.0 + k * 3.0
+			for j in 3:
+				var x: float = c.x + (j - 1) * 2.6
+				w.add({"p": Vector3(x, c.y - 0.25, z + 1.0), "s": Vector3(2.4, 0.5, 2.0), "k": "glass", "m": "logic", "ok": bool(row[j][1]), "text": str(row[j][0])})
+				if row[j][1]:
+					route.append({"p": Vector3(x, c.y, z + 1.0)})
+		c.z = z0 + 1.0 + rows * 3.0
+		lava_under(z0, c.z + 1.0, c.y - 7.0, 12.0)
+		plat(5.0, 6.0, 0.6, 0.0, "studs")
+
+	func trampoline() -> void:
+		# Батут подбрасывает на высокую платформу.
+		var i := plat(3.0, 3.0, 2.4, 0.0, "bounce", "bounce")
+		w.parts[i]["power"] = 19.0
+		route[route.size() - 1]["air"] = true
+		plat(5.0, 5.0, 2.2, 4.0, "studs")
+		lava_under(c.z - 13.0, c.z + 1.0, c.y - 10.0)
+
+	func conveyor() -> void:
+		# Лента поперёк пути тащит героя к лаве — иди быстрее.
+		var sgn := 1.0 if rng.randf() < 0.5 else -1.0
+		var i := plat(12.0, 5.0, 2.4, 0.0, "belt", "conv")
+		w.parts[i]["dir"] = Vector3(3.2 * sgn, 0, 0)
+		var mid: Vector3 = route.pop_back()["p"]
+		route.append({"p": mid + Vector3(-1.2 * sgn, 0, -5.0)})
+		route.append({"p": mid + Vector3(-1.2 * sgn, 0, 5.0)})
+		lava_under(c.z - 13.0, c.z + 1.0, c.y - 5.0)
+
+	func lasers(n: int) -> void:
+		# Лазеры-перекладины включаются и выключаются по таймеру: проходи, когда погасли.
+		var ln := 4.0 + n * 4.0
+		plat(ln, 4.0, 2.4, 0.0, "neon")
+		var z0: float = c.z - ln
+		var last: Dictionary = route.pop_back()
+		for k in n:
+			var z := z0 + 4.0 + k * 4.0
+			var li := w.add({"p": Vector3(c.x, c.y + 1.1, z), "s": Vector3(4.0, 2.2, 0.25), "k": "laser", "m": "laser", "per": 2.6, "ph": rng.randf() * 2.6})
+			route.append({"p": Vector3(c.x, c.y, z - 1.6), "laser": li})
+		route.append({"p": Vector3(c.x, c.y, c.z - 0.8)})
+		lava_under(z0 - 2.0, c.z + 1.0, c.y - 5.0)
+
+	func swing() -> void:
+		# Платформа ездит поперёк пропасти: запрыгни, когда она перед тобой, и спрыгни на той стороне.
+		var z0 := c.z
+		var mid := Vector3(c.x, c.y - 0.5, c.z + 4.6)
+		var i := w.add({"p": mid, "s": Vector3(3.2, 1.0, 3.2), "k": "mover", "m": "metal", "a": Vector3(5.0, 0, 0), "w": 1.1, "ph": rng.randf() * TAU})
+		route.append({"p": mid + Vector3(0, 0.5, 0), "mover": i, "near": mid, "board": true, "edge": Vector3(c.x, c.y, z0 - 0.5)})
+		route.append({"mover": i, "near": mid, "ride": true})
+		c.z = z0 + 9.2
+		plat(5.0, 5.0, 0.0, 0.0, "studs")
+		lava_under(z0, c.z, c.y - 6.0)
+
+	func pick_rows(title: String, rows: Array, wid: float = 2.4) -> void:
+		# Общий мост выбора: в каждом ряду несколько плиток, держит только верная. rows: [[варианты], верный]
+		plat(4.0, 3.0 + rows[0][0].size() * 2.6, 2.5, 0.0, "studs")
+		w.add({"p": Vector3(c.x, c.y + 3.5, c.z - 0.2), "s": Vector3(10.0, 2.2, 0.2), "k": "sign", "m": "sign", "text": title})
+		quiz.append({"q": title})
+		var z0 := c.z
+		for k in rows.size():
+			var opts: Array = rows[k][0]
+			var z := z0 + 1.0 + k * 3.0
+			for j in opts.size():
+				var x: float = c.x + (j - (opts.size() - 1) / 2.0) * 2.6
+				var ok: bool = j == int(rows[k][1])
+				w.add({"p": Vector3(x, c.y - 0.25, z + 1.0), "s": Vector3(wid, 0.5, 2.0), "k": "glass", "m": "logic", "ok": ok, "text": str(opts[j])})
+				if ok:
+					route.append({"p": Vector3(x, c.y, z + 1.0)})
+		c.z = z0 + 1.0 + rows.size() * 3.0
+		lava_under(z0, c.z + 1.0, c.y - 7.0, 12.0)
+		plat(5.0, 6.0, 0.6, 0.0, "studs")
+
+	func compare(n: int) -> void:
+		# «Шагай на большее»: в ряду два числа в разных системах счисления, держит большее.
+		var rows := []
+		for k in n:
+			var a := rng.randi_range(5, 60)
+			var b := a + rng.randi_range(1, 9) * (1 if rng.randf() < 0.5 else -1)
+			if b <= 0 or b == a:
+				b = a + 3
+			var pair := [fmt_num(a, grade, rng), fmt_num(b, grade, rng)]
+			rows.append([pair, 0 if a > b else 1])
+		pick_rows("Шагай на БОЛЬШЕЕ число", rows)
+
+	func digits(base: int) -> void:
+		# Мост по разрядам: число в десятичной, иди по цифрам его записи в системе base (старший разряд — первый ряд).
+		var n := rng.randi_range(base * 2, base * base * base - 1)
+		var ds := String.num_int64(n, base).to_upper()
+		var rows := []
+		var all := "0123456789ABCDEF".substr(0, base)
+		for ch in ds:
+			var opts := [ch]
+			while opts.size() < 3:
+				var o := all[rng.randi() % base]
+				if not opts.has(o):
+					opts.append(o)
+			KP.shuffle(opts, rng)
+			rows.append([opts, opts.find(ch)])
+		pick_rows("%d₁₀ в %s системе — иди по цифрам" % [n, {8: "восьмеричной", 16: "шестнадцатеричной", 2: "двоичной"}[base]], rows)
+
+	static func fmt_num(v: int, g: int, r: RandomNumberGenerator) -> String:
+		var forms := ["dec", "bin"]
+		if g >= 8:
+			forms.append("hex")
+		if g >= 9:
+			forms.append("oct")
+		match forms[r.randi() % forms.size()]:
+			"bin":
+				return "%s₂" % String.num_int64(v, 2)
+			"hex":
+				return "%s₁₆" % String.num_int64(v, 16).to_upper()
+			"oct":
+				return "%s₈" % String.num_int64(v, 8)
+		return str(v)
+
 	func climb(n: int) -> void:
 		# Подъём по ступеням-островкам, на средней — вращающаяся балка.
 		for k in n:
@@ -389,13 +588,59 @@ class Track:
 			plat(6.0, 1.2, 2.0, 0.0, "metal", "solid", [0.0, 1.5, -1.5][k % 3])
 		lava_under(c.z - n * 8.0, c.z + 1.0, c.y - 6.0)
 
+# Большое обби: 40 этапов, каждый заканчивается чекпоинтом; сложность растёт, информатика — через этап.
+static func mega_stage(tr: Track, n: int) -> void:
+	var r := tr.rng
+	var level := 0 if n <= 12 else (1 if n <= 26 else 2)
+	if n % 2 == 0:
+		var info := ["doors", "bits", "logic", "compare", "digits"]
+		if tr.grade <= 7:
+			info = ["doors", "bits", "logic", "compare"]
+		match info[(n / 2) % info.size()]:
+			"doors":
+				if tr.qs.is_empty():
+					tr.qs.append(question(tr.grade, r, 3))
+				tr.doors()
+			"bits":
+				tr.bridge(clampi(3 + level + (1 if tr.grade >= 9 else 0), 3, 7))
+			"logic":
+				tr.logic(2 + level)
+			"compare":
+				tr.compare(2 + level)
+			"digits":
+				tr.digits(16 if tr.grade >= 9 and r.randf() < 0.6 else 8)
+	else:
+		var pools := [["jumps", "strips", "trampoline", "conveyor"], ["jumps", "lasers", "mover", "swing", "trampoline", "conveyor"], ["vanish", "beams", "climb", "lasers", "swing", "jumps"]]
+		match pools[level][r.randi() % pools[level].size()]:
+			"jumps":
+				tr.jumps(3 + level, 2.4 + level * 0.4, 0.5 + level * 0.2, 3.0 - level * 0.3)
+			"strips":
+				tr.strips(2 + level)
+			"trampoline":
+				tr.trampoline()
+			"conveyor":
+				tr.conveyor()
+			"lasers":
+				tr.lasers(2 + level)
+			"mover":
+				tr.mover(10.0 + level * 2.0)
+			"swing":
+				tr.swing()
+			"vanish":
+				tr.vanishers(3 + level)
+			"beams":
+				tr.beams(2 + level)
+			"climb":
+				tr.climb(3 + level)
+	tr.checkpoint()
+
 static func obby(kind: String, grade: int, seed: int) -> Track:
 	var tr := Track.new()
 	tr.w = World.new()
 	tr.rng = RandomNumberGenerator.new()
 	tr.rng.seed = seed
 	tr.grade = grade
-	for _k in 5:
+	for _k in 6:
 		tr.qs.append(question(grade, tr.rng, 3))
 	# Площадь старта.
 	tr.w.add({"p": Vector3(0, -0.5, 0), "s": Vector3(26.0, 1.0, 26.0), "k": "solid", "m": "studs"})
@@ -404,11 +649,16 @@ static func obby(kind: String, grade: int, seed: int) -> Track:
 	tr.w.spawn = Vector3(0, 0.2, -6.0)
 	tr.route.append({"p": Vector3(0, 0, 11.5)})
 	var width := 4 if grade <= 7 else (5 if grade <= 9 else 6)
-	if kind == "obby":
+	if kind == "mega":
+		for n in range(1, 41):
+			mega_stage(tr, n)
+	elif kind == "obby":
 		tr.jumps(5, 2.6, 0.6)
 		tr.checkpoint()
 		tr.strips(3)
 		tr.doors()
+		tr.checkpoint()
+		tr.logic(3)
 		tr.checkpoint()
 		tr.mover(11.0)
 		tr.bridge(width)
@@ -419,6 +669,7 @@ static func obby(kind: String, grade: int, seed: int) -> Track:
 		tr.jumps(4, 3.2, 0.8, 2.6)
 		tr.checkpoint()
 		tr.vanishers(4)
+		tr.logic(4)
 		tr.doors()
 		tr.checkpoint()
 		tr.bridge(8 if grade >= 8 else 6)
@@ -459,16 +710,44 @@ static func autopilot(tr: Track, st: Dictionary) -> Array:
 			st["i"] = i + 1
 			return autopilot(tr, st)
 		var near: Vector3 = wp["near"]
-		if absf(mc2.z - near.z) > 0.7 and w.on_floor:
+		if (Vector2(mc2.x, mc2.z) - Vector2(near.x, near.z)).length() > 0.7 and w.on_floor:
 			# ждём платформу у края
-			var edge := Vector2(near.x - w.pos.x, near.z - 3.3 - w.pos.z)
+			var ep: Vector3 = wp.get("edge", Vector3(near.x, near.y, near.z - 3.3))
+			var edge := Vector2(ep.x - w.pos.x, ep.z - w.pos.z)
 			return [edge.limit_length(1.0) if edge.length() > 0.3 else Vector2.ZERO, false]
 		target = Vector3(mc2.x, near.y + 0.5, mc2.z)
 	if wp.has("vanish"):
 		var vp: Dictionary = w.parts[int(wp["vanish"])]
 		if w.on_floor and w.floor_i != int(wp["vanish"]) and fposmod(w.t + float(vp["ph"]), float(vp["per"])) > 0.9:
 			return [Vector2.ZERO, false]
+	if wp.has("lock"):
+		var dl := Vector2(wp["p"].x - w.pos.x, wp["p"].z - w.pos.z)
+		if dl.length() < 0.5 and w.on_floor:
+			if not w.parts[int(wp["door"])].get("open", false):
+				st["need_lock"] = int(wp["lock"])
+				return [Vector2.ZERO, false]
+			st["i"] = i + 1
+			return autopilot(tr, st)
+	if wp.get("guard", false):
+		# ждём, пока патрульный уйдёт на дальнюю сторону
+		for pi in w.near:
+			var gp: Dictionary = w.parts[pi]
+			if gp.get("m", "") == "guard" and gp["c"].x < 0.8 and absf(gp["c"].z - w.pos.z) < 4.0 and w.on_floor:
+				return [Vector2.ZERO, false]
+	if wp.has("laser"):
+		# ждём, пока лазер погаснет, и сразу проходим
+		var lp: Dictionary = w.parts[int(wp["laser"])]
+		var dd := Vector2(target.x - w.pos.x, target.z - w.pos.z)
+		if dd.length() < 0.5 and w.on_floor:
+			var ph := fposmod(w.t + float(lp["ph"]), float(lp["per"]))
+			if ph < float(lp["per"]) * 0.5 or ph > float(lp["per"]) * 0.62:
+				return [Vector2.ZERO, false]
+			st["i"] = i + 1
+			return [Vector2(0, 1), false]
 	var d := Vector2(target.x - w.pos.x, target.z - w.pos.z)
+	if wp.get("air", false) and w.t - w.bounce_t < 0.2:
+		st["i"] = i + 1
+		return autopilot(tr, st)
 	if d.length() < 0.45 and absf(target.y - w.pos.y) < 1.2 and w.on_floor:
 		st["i"] = i + 1
 		return autopilot(tr, st)
@@ -479,7 +758,8 @@ static func autopilot(tr: Track, st: Dictionary) -> Array:
 		if not w.floor_at(ahead) or w.danger_at(ahead + Vector3(0, 0.05, 0)) or (target.y - w.pos.y > 0.5 and d.length() < 3.0):
 			jump = true
 		# у вращающейся балки прыгаем на подходе
-		for p in w.parts:
+		for pi in w.near:
+			var p: Dictionary = w.parts[pi]
 			if p["k"] == "spin" and (Vector2(p["c"].x, p["c"].z) - Vector2(w.pos.x, w.pos.z)).length() < 3.4 and absf(p["c"].y - w.pos.y) < 1.5:
 				jump = true
 	return [dir, jump]
@@ -586,3 +866,190 @@ static func sell_quiz(bits_n: int, rng: RandomNumberGenerator) -> Dictionary:
 			opts.append(str(x))
 	KP.shuffle(opts, rng)
 	return {"q": q, "opts": opts, "right": opts.find(right), "code": []}
+
+# ---------- «Пол — это лава»: раунды у всего класса по часам сервера ----------
+
+const LAVA_ROUND := 22.0      # 0–14 с — выбираешь плитку, 14–17 — неверные становятся лавой, 17–22 — итоги
+const LAVA_PICK := 14.0
+const LAVA_BURN := 17.0
+
+static func lava_question(seed: int, r: int, grade: int) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed * 7919 + r * 104729
+	# Нужны ровно четыре разных ответа — по одному на плитку.
+	for _k in 20:
+		var q := question(grade, rng, 4)
+		if (q["opts"] as Array).size() == 4:
+			return q
+	var n := rng.randi_range(5, 30)
+	var opts := [String.num_int64(n, 2), String.num_int64(n + 1, 2), String.num_int64(n - 1, 2), String.num_int64(n + 2, 2)]
+	return {"q": "Как записать %d в двоичной системе?" % n, "opts": opts, "right": 0, "code": []}
+
+static func lava_phase(t: float) -> Array:
+	# [номер раунда, фаза "pick"/"burn"/"rest", секунд до конца фазы]
+	var r := int(floor(t / LAVA_ROUND))
+	var u := t - r * LAVA_ROUND
+	if u < LAVA_PICK:
+		return [r, "pick", LAVA_PICK - u]
+	if u < LAVA_BURN:
+		return [r, "burn", LAVA_BURN - u]
+	return [r, "rest", LAVA_ROUND - u]
+
+# ---------- «Побег»: головоломки замков ----------
+
+static func tree(grade: int, rng: RandomNumberGenerator, depth: int) -> Array:
+	if depth <= 0:
+		var v: String = ["A", "B", "C"][rng.randi() % 3]
+		return ["not", ["var", v]] if rng.randf() < 0.3 else ["var", v]
+	var a := tree(grade, rng, depth - 1)
+	var b := tree(grade, rng, 0)
+	var op: String = ["and", "or"][rng.randi() % 2]
+	if grade >= 9 and rng.randf() < 0.3:
+		return ["not", [op, a, b]]
+	return [op, a, b]
+
+static func tree_eval(t: Array, v: Dictionary) -> bool:
+	match str(t[0]):
+		"var":
+			return bool(v.get(t[1], false))
+		"not":
+			return not tree_eval(t[1], v)
+		"and":
+			return tree_eval(t[1], v) and tree_eval(t[2], v)
+	return tree_eval(t[1], v) or tree_eval(t[2], v)
+
+static func tree_text(t: Array, top: bool = true) -> String:
+	match str(t[0]):
+		"var":
+			return str(t[1])
+		"not":
+			var inner := tree_text(t[1], false)
+			return "не " + (inner if str(t[1][0]) == "var" else "(%s)" % inner)
+	var s := "%s %s %s" % [tree_text(t[1], false), "и" if t[0] == "and" else "или", tree_text(t[2], false)]
+	return s if top else "(%s)" % s
+
+static func puzzle(kind: String, grade: int, rng: RandomNumberGenerator) -> Dictionary:
+	match kind:
+		"bits":
+			var wd := 4 if grade <= 7 else (6 if grade <= 9 else 8)
+			var n := rng.randi_range(1 << (wd - 2), (1 << wd) - 1)
+			var shown := str(n)
+			if grade >= 9 and rng.randf() < 0.5:
+				shown = "0x%X" % n
+			return {"kind": "bits", "n": n, "w": wd, "title": "Кодовый замок: зажги лампы так, чтобы получилось число %s" % shown}
+		"levers":
+			for _k in 50:
+				var t := tree(grade, rng, 1 if grade <= 8 else 2)
+				var good := 0
+				for a in 8:
+					if tree_eval(t, {"A": a & 4 != 0, "B": a & 2 != 0, "C": a & 1 != 0}):
+						good += 1
+				if good >= 1 and good <= 3:
+					return {"kind": "levers", "tree": t, "title": "Рычаги A, B, C: дверь откроется, когда выражение ИСТИННО:  " + tree_text(t)}
+		"caesar":
+			var words := ["БАЙТ", "КОД", "СЕТЬ", "ЦИКЛ", "ФАЙЛ", "ПИКСЕЛЬ", "ПАРОЛЬ", "МАССИВ", "СЕРВЕР", "ЛОГИКА"]
+			var abc := "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
+			var wd2: String = words[rng.randi() % words.size()]
+			var k := rng.randi_range(1, 5)
+			var enc := ""
+			for ch in wd2:
+				enc += abc[(abc.find(ch) + k) % 32]
+			var opts := [wd2]
+			for x in words:
+				if opts.size() < 4 and x != wd2 and x.length() == wd2.length():
+					opts.append(x)
+			while opts.size() < 4:
+				var y: String = words[rng.randi() % words.size()]
+				if not opts.has(y):
+					opts.append(y)
+			KP.shuffle(opts, rng)
+			return {"kind": "choice", "title": "Записка охранника зашифрована Цезарем (сдвиг на %d вперёд): %s. Какое слово — пароль?" % [k, enc], "opts": opts, "right": opts.find(wd2)}
+		"order":
+			var vals := []
+			while vals.size() < 5:
+				var v := rng.randi_range(3, 60)
+				if not vals.has(v):
+					vals.append(v)
+			var items := []
+			for v in vals:
+				items.append([Track.fmt_num(v, grade, rng), v])
+			return {"kind": "order", "items": items, "title": "Сейф: нажимай числа по ВОЗРАСТАНИЮ"}
+	var q := question(grade, rng, 4)
+	return {"kind": "choice", "title": q["q"], "code": q.get("code", []), "opts": q["opts"], "right": q["right"]}
+
+static func puzzle_ok(pz: Dictionary, ans) -> bool:
+	match str(pz["kind"]):
+		"bits":
+			var v := 0
+			for b in ans:
+				v = v * 2 + (1 if b else 0)
+			return v == int(pz["n"]) and (ans as Array).size() == int(pz["w"])
+		"levers":
+			return ans is Array and ans.size() == 3 and tree_eval(pz["tree"], {"A": bool(ans[0]), "B": bool(ans[1]), "C": bool(ans[2])})
+		"order":
+			if not (ans is Array) or ans.size() != pz["items"].size():
+				return false
+			for k in range(1, ans.size()):
+				if int(pz["items"][int(ans[k])][1]) <= int(pz["items"][int(ans[k - 1])][1]):
+					return false
+			return true
+	return int(ans) == int(pz["right"])
+
+static func puzzle_solve(pz: Dictionary):
+	match str(pz["kind"]):
+		"bits":
+			var out := []
+			for i in range(int(pz["w"]) - 1, -1, -1):
+				out.append((int(pz["n"]) >> i) & 1 == 1)
+			return out
+		"levers":
+			for a in 8:
+				var v := [a & 4 != 0, a & 2 != 0, a & 1 != 0]
+				if tree_eval(pz["tree"], {"A": v[0], "B": v[1], "C": v[2]}):
+					return v
+		"order":
+			var idx := range(pz["items"].size())
+			idx.sort_custom(func(a, b): return pz["items"][a][1] < pz["items"][b][1])
+			return idx
+	return int(pz["right"])
+
+static func escape(grade: int, seed: int) -> Track:
+	# Тюрьма Глюка: восемь камер подряд, в каждой — замок с головоломкой и дверь; между камерами — лазеры и патруль.
+	var tr := Track.new()
+	tr.w = World.new()
+	tr.rng = RandomNumberGenerator.new()
+	tr.rng.seed = seed
+	tr.grade = grade
+	var w := tr.w
+	w.add({"p": Vector3(0, -0.5, 0), "s": Vector3(16.0, 1.0, 16.0), "k": "solid", "m": "metal"})
+	tr.c = Vector3(0, 0, 8.0)
+	w.spawn = Vector3(0, 0.2, -4.0)
+	var kinds := ["bits", "levers", "caesar", "order", "quiz", "bits", "levers", "order"]
+	for n in kinds.size():
+		var z0 := tr.c.z
+		var pz := puzzle(kinds[n], grade, tr.rng)
+		tr.quiz.append(pz)
+		# камера: пол, стены по бокам, дверь в конце
+		w.add({"p": Vector3(0, -0.5, z0 + 7.0), "s": Vector3(14.0, 1.0, 14.0), "k": "solid", "m": "metal"})
+		for sx in [-7.5, 7.5]:
+			w.add({"p": Vector3(sx, 3.0, z0 + 7.0), "s": Vector3(1.0, 6.0, 14.0), "k": "solid", "m": "wall"})
+		var term := w.add({"p": Vector3(0, 0.15, z0 + 10.5), "s": Vector3(2.6, 0.3, 2.6), "k": "pad", "m": "pad", "text": "ЗАМОК %d" % (n + 1), "id": "lock%d" % n, "lock": n})
+		var door := w.add({"p": Vector3(0, 3.0, z0 + 14.0), "s": Vector3(14.0, 6.0, 1.0), "k": "wall", "m": "door_lock", "lock": n})
+		w.parts[term]["door"] = door
+		if n % 2 == 1:
+			# патрульный робот ходит поперёк камеры
+			w.add({"p": Vector3(0, 0.9, z0 + 6.0), "s": Vector3(1.4, 1.8, 1.4), "k": "kill", "m": "guard", "a": Vector3(5.6, 0, 0), "w": 1.4, "ph": tr.rng.randf() * TAU})
+			tr.route.append({"p": Vector3(-6.3, 0, z0 + 3.0)})
+			tr.route.append({"p": Vector3(-6.3, 0, z0 + 9.0), "guard": true})
+		tr.route.append({"p": Vector3(0, 0, z0 + 10.5), "lock": n, "door": door})
+		tr.route.append({"p": Vector3(0, 0, z0 + 14.2)})
+		tr.c = Vector3(0, 0, z0 + 14.5)
+		if n < kinds.size() - 1:
+			# коридор с лазерами к следующей камере
+			if n % 3 == 2:
+				tr.lasers(2)
+			else:
+				tr.jumps(2, 2.2, 0.0, 3.0)
+			tr.c.y = 0.0
+	tr.plat(8.0, 8.0, 2.0, 0.0, "gold", "finish")
+	return tr

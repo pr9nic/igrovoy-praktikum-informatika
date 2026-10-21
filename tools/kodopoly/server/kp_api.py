@@ -196,3 +196,10 @@ def install_kodopoly(app):
             t['inputs'].append({'seat': s['seat'], 'type': inp['type'], 'i': inp.get('i') if isinstance(inp.get('i'), int) else -1})
         return {'status': 'ok', 'snap': t['snap'], 'players': names, 'online': online, 'seat': s['seat']}
     route('sync', sync)
+
+    # «Кодоблокс»: общий 3D-мир класса живёт рядом, в том же модуле подключения (app.py не меняется).
+    try:
+        from blox_api import install_blox
+        install_blox(app)
+    except Exception as error:
+        print('blox_api не подключён:', error, flush=True)
