@@ -164,9 +164,8 @@ if (require.main === module) {
       if (stars(sol.answers) !== 3 || stars(loose) !== 3 || stars(ru) !== 3 || g.check(l, {seed, answers: wrong}).ok || g.check(l, {seed, answers: half}).ok) bad = `задание ${n}, вариант ${seed}: проверка ответа (${loose.join(' / ')} | ${wrong.join(' / ')})`; }
     check('ЕГЭ-арена: задания 1, 2, 19–22 сходятся с независимым перебором на 300 вариантах; в 1 и 2 ответ единственный; вольная запись ответа принимается, неверная — нет', !bad && sym > 0 && sums > 0 && luck > 0 && byT > 0, bad || `симметричных схем ${sym}, сумм двух дорог ${sums}, «неудачный ход» ${luck}, «к моменту T» ${byT}`); }
   // Новые игры: верстальщик — исходный документ всегда отличается от образца; компьютер — деталь не в своём гнезде не проходит; автопилот — заученный маршрут не долетает.
-  { const lo = G.layout, pc = G.pcbuild, ap = G.autopilot; let bad = '';
+  { const lo = G.layout, ap = G.autopilot; let bad = '';
     for (const l of lo.LEVELS) { const st = l.doc.map(p => { const o = {...p}; for (const k of l.used) o[k] = {align: 'left', bold: false, italic: false, size: 'm', kind: 'p', indent: false, margin: 0}[k]; return o; }); if (lo.check(l, st).ok) bad = 'верстальщик: «' + l.title + '» уже готов в начале'; }
-    const b3 = pc.LEVELS[2], wrong = {...pc.solve(b3), cpu: 'ram', ram: 'cpu'};
-    check('новые игры: документ не готов сразу, детали в чужих гнёздах и заученный маршрут дрона не проходят', !bad && !pc.check(b3, wrong).ok && !ap.check(ap.LEVELS[0], {seed: 3, code: 'forward()\nforward()\nforward()'}).ok && ap.check(ap.LEVELS[7], ap.solve(ap.LEVELS[7])).ok, bad); }
+    check('новые игры: документ не готов сразу и заученный маршрут дрона не проходит (сборку компьютера теперь проверяет tests/pc3d.gd)', !bad && !ap.check(ap.LEVELS[0], {seed: 3, code: 'forward()\nforward()\nforward()'}).ok && ap.check(ap.LEVELS[7], ap.solve(ap.LEVELS[7])).ok, bad); }
   module.exports.done();
 }

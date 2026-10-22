@@ -9,7 +9,7 @@
   const button = (text, cls, fn) => { const b = el('button', cls, text); b.type = 'button'; b.addEventListener('click', fn); return b; };
   LAB.el = el; LAB.button = button;
   window.addEventListener('load', () => {
-    const ORDER = ['blast', 'runner', 'bunker', 'oge', 'ege', 'sheets', 'arrays', 'sortyard', 'sorting', 'logic', 'ipnet', 'graphs', 'bytes', 'archiver', 'sets', 'executors', 'turing', 'turtle', 'autopilot', 'pcbuild', 'layout', 'office', 'gates', 'factory', 'detective', 'cipher', 'codes', 'dbcity', 'pixel', 'race', 'quest']; LAB.games.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
+    const ORDER = ['blast', 'runner', 'bunker', 'oge', 'ege', 'sheets', 'arrays', 'sortyard', 'sorting', 'logic', 'ipnet', 'graphs', 'bytes', 'archiver', 'sets', 'executors', 'turing', 'turtle', 'autopilot', 'layout', 'office', 'gates', 'factory', 'detective', 'cipher', 'codes', 'dbcity', 'pixel', 'race', 'quest']; LAB.games.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
     const data = JSON.parse(document.getElementById('assignmentData').textContent), root = document.getElementById('lab'), grade = data.grade;
     const query = new URLSearchParams(location.search), embed = query.get('embed') === '1', playerKey = /^[a-z0-9]{1,24}$/.test(query.get('player') || '') ? query.get('player') : '';
     const artV = document.getElementById('assignmentData').dataset.art || '', cover = g => { const i = el('img', 'lab-cover'); i.src = `art/cover_${g.id}.webp?v=${artV}`; i.alt = ''; i.loading = 'lazy'; i.addEventListener('error', () => i.remove()); return i; };
