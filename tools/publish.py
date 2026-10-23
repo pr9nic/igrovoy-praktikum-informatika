@@ -216,7 +216,7 @@ def render(data,attachments,output):
         for name in names:shutil.copyfile(engine/name,output/name)
         (output/'art'/'bt').mkdir(parents=True,exist_ok=True)
         for f in sorted((engine/'art'/'bt').glob('*.webp')):shutil.copyfile(f,output/'art'/'bt'/f.name)
-        covers=sorted((engine/'art').glob('cover_*.webp'))+sorted((engine/'art').glob('link_*.webp'))+sorted((engine/'art').glob('badge_*.webp'))+sorted((engine/'art').glob('avatar_*.webp'))+sorted((engine/'art').glob('season_*.webp'))+sorted((engine/'art').glob('bunker_p*.webp'))+sorted((Path(__file__).with_name('lab')/'art').glob('cover_*.webp'))
+        covers=sorted((engine/'art').glob('cover_*.webp'))+sorted((engine/'art').glob('link_*.webp'))+sorted((engine/'art').glob('badge_*.webp'))+sorted((engine/'art').glob('avatar_*.webp'))+sorted((engine/'art').glob('season_*.webp'))+sorted((engine/'art').glob('bunker_p*.webp'))+sorted((engine/'art').glob('qcover_*.webp'))+sorted((Path(__file__).with_name('lab')/'art').glob('cover_*.webp'))
         (output/'art').mkdir(exist_ok=True)
         for f in covers:shutil.copyfile(f,output/'art'/f.name)
         page=page.replace('<script defer src="/portal/game.js?v=20261006"></script>',''.join('<script defer src="%s?v=%s"></script>'%(n,version) for n in ['battle_logic.js','battle.js','battle_play.js','battle_teach.js','practicum.js'])).replace('/portal/game.css?v=20261006','practicum.css?v='+version+'"><link rel="stylesheet" href="battle.css?v='+version).replace('class="game-wrap" id="game"','class="game-wrap" id="practicum"')

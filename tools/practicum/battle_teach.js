@@ -23,22 +23,65 @@
     const classes = () => [...'АБВГДЕЖЗИК'].map(l => `${ctx.grade} «${l}»`);
 
     /* ---------- библиотека ---------- */
+    // Главы учебника Босовой: тесты «N кл · §X · …» раскладываются по главам с обложками (art/qcover_*.webp).
+    const CHAPTERS = {
+      6: [[6, 'Объекты и системы', 'c6_objects'], [13, 'Познание и модели', 'c6_models'], [17, 'Алгоритмы и исполнители', 'c6_algo']],
+      7: [['1', 'Гл. 1. Информация и информационные процессы', 'c7_info'], ['2', 'Гл. 2. Компьютер — универсальное устройство', 'c7_pc'], ['3', 'Гл. 3. Обработка текстовой информации', 'c7_text'], ['4', 'Гл. 4. Графическая информация', 'c7_graphics'], ['5', 'Гл. 5. Мультимедиа', 'c7_media']],
+      8: [['1', 'Гл. 1. Системы счисления', 'c8_numsys'], ['2', 'Гл. 2. Элементы математической логики', 'c8_logic'], ['3', 'Гл. 3. Основы алгоритмизации', 'c8_algo'], ['5', 'Гл. 5. Программирование на Python', 'c8_python']],
+      9: [['1', 'Гл. 1. Алгоритмы и программирование', 'c9_prog'], ['2', 'Гл. 2. Моделирование', 'c9_models'], ['3', 'Гл. 3. Электронные таблицы', 'c9_sheets'], ['4', 'Гл. 4. Сети и Интернет', 'c9_net']],
+      10: [[5, 'Гл. 1. Информация и информационные процессы', 'c10_info'], [9, 'Гл. 2. Компьютер и программное обеспечение', 'c10_pc'], [16, 'Гл. 3. Представление информации', 'c10_code'], [22, 'Гл. 4. Множества и алгебра логики', 'c10_logic'], [25, 'Гл. 5. Технологии создания документов', 'c10_docs']],
+      11: [[4, 'Гл. 1. Электронные таблицы', 'c11_sheets'], [9, 'Гл. 2. Алгоритмы и программирование', 'c11_algo'], [13, 'Гл. 3. Информационное моделирование', 'c11_models'], [16, 'Гл. 4. Сетевые технологии', 'c11_net'], [18, 'Гл. 5. Социальная информатика', 'c11_society']]};
+    const chapterOf = q => {
+      if (/^Интернет-культура/.test(q.title)) return {key: 'culture', name: '😂 Интернет-культура: мемы, сленг, игры, нейросети', cover: 'c_memes', order: 99};
+      const m = /^(\d+) кл · §([\d.]+)/.exec(q.title); if (!m) return {key: 'mine', name: 'Мои викторины', cover: '', order: -1};
+      const g = +m[1], par = m[2], list = CHAPTERS[g] || [];
+      for (let i = 0; i < list.length; i++) { const [lim, name, cover] = list[i];
+        if (typeof lim === 'string' ? par.split('.')[0] === lim : +par <= lim) return {key: g + ':' + i, name, cover, order: i}; }
+      return {key: g + ':x', name: 'Другие темы', cover: '', order: 50};
+    };
+    const parNum = t => { const m = /§([\d.]+)/.exec(t); return m ? m[1].split('.').map(Number) : [999]; };
+    const byPar = (a, b) => { const x = parNum(a.title), y = parNum(b.title); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d; } return a.title.localeCompare(b.title); };
+    let libGrade = null;
     async function library() {
       body.replaceChildren(h('p', 'p-note', 'Загружаем библиотеку…'));
       let d; try { d = await API('library'); } catch (e) { body.replaceChildren(h('p', 'p-note', 'Сервер не ответил: ' + e.message + '. Если это первый запуск — перезапустите журнал (см. «Состояние сервиса»).')); return; }
-      const head = h('div', 'btt-row'), list = h('div', 'btt-lib'), filt = select([['all', 'Все классы'], [String(ctx.grade), ctx.grade + ' класс'], ['0', 'Для всех классов']], 'all');
+      if (libGrade === null) libGrade = String(ctx.grade);
+      const head = h('div', 'btt-row btt-libhead'), list = h('div', 'btt-libwrap'), tabs = h('div', 'btt-gtabs'), search = h('input', 'btt-search');
+      search.placeholder = '🔎 Поиск: тема, параграф, «мемы»…'; search.dataset.field = 'btt-search';
       const add = btn('＋ Новая викторина', 'p-primary', () => editor({title: '', grade: ctx.grade, questions: []})); add.dataset.act = 'btt-new';
       const imp = btn('⇪ Импорт из текста', 'p-small', () => importer()); imp.dataset.act = 'btt-import';
-      head.append(h('h2', '', 'Мои викторины'), filt, add, imp);
-      const draw = () => { list.replaceChildren(); for (const q of d.quizzes.filter(x => filt.value === 'all' || String(x.grade) === filt.value)) {
-        const c = h('div', 'btt-qz'), types = h('div', 'btt-types'); for (const t of q.types) types.append(h('span', '', TYPE_ICON[t] + ' ' + TYPES[t]));
-        const play = btn('▶ Играть с классом', 'p-primary', () => host(q)); play.dataset.play = q.id;
-        const edit = btn('✎ Изменить', 'p-small', async () => editor((await API('quiz', {id: q.id})).quiz)); edit.dataset.edit = q.id;
-        const copy = btn('⧉ Копия', 'p-small', async () => { const full = (await API('quiz', {id: q.id})).quiz; full.title = (full.title + ' (копия)').slice(0, 100); delete full.id; await API('save', {quiz: full}); library(); });
+      head.append(h('h2', '', 'Викторины'), search, add, imp);
+      const opts = [['all', 'Все'], ...[6, 7, 8, 9, 10, 11].map(g => [String(g), g + ' класс']), ['0', 'Для всех']];
+      const drawTabs = () => { tabs.replaceChildren(); for (const [v, t] of opts) { const n = d.quizzes.filter(x => v === 'all' || String(x.grade) === v).length; const b = btn(`${t} · ${n}`, 'btt-gtab' + (libGrade === v ? ' on' : ''), () => { libGrade = v; drawTabs(); draw(); }); b.dataset.grade = v; tabs.append(b); } };
+      const card = q => {
+        const c = h('div', 'btt-qz');
+        const play = btn('▶ Играть', 'p-primary', () => host(q)); play.dataset.play = q.id; play.title = 'Открыть игру для класса';
+        const edit = btn('✎', 'p-small', async () => editor((await API('quiz', {id: q.id})).quiz)); edit.dataset.edit = q.id; edit.title = 'Изменить';
+        const copy = btn('⧉', 'p-small', async () => { const full = (await API('quiz', {id: q.id})).quiz; full.title = (full.title + ' (копия)').slice(0, 100); delete full.id; await API('save', {quiz: full}); library(); }); copy.title = 'Копия';
         const del = btn('🗑', 'p-small', async () => { if (confirm(`Удалить викторину «${q.title}»?`)) { await API('delete', {id: q.id}); library(); } }); del.title = 'Удалить';
-        const row = h('div', 'btt-row'); row.append(play, edit, copy, del);
-        c.append(h('b', '', q.title), h('span', 'btt-meta', `${q.grade ? q.grade + ' класс' : 'для всех классов'} · вопросов: ${q.count} · изменена ${fmtDate(q.updated)}`), types, row); list.append(c); } };
-      filt.addEventListener('change', draw); draw(); body.replaceChildren(head, list);
+        const row = h('div', 'btt-row btt-acts'); row.append(play, edit, copy, del);
+        const short = q.title.replace(/^\d+ кл · /, '').replace(/^Интернет-культура · /, '');
+        c.append(h('b', '', short), h('span', 'btt-meta', `${q.grade ? q.grade + ' класс' : 'для всех'} · ${q.count} вопр. · ${fmtDate(q.updated)}`), row);
+        return c;
+      };
+      const draw = () => {
+        const words = search.value.trim().toLowerCase();
+        const pick = d.quizzes.filter(x => (libGrade === 'all' || String(x.grade) === libGrade || (libGrade !== '0' && x.grade === 0 && /^Интернет-культура/.test(x.title))) && (!words || x.title.toLowerCase().includes(words)));
+        const groups = new Map();
+        for (const q of pick) { const ch = chapterOf(q); const k = (q.grade || 0) + '|' + ch.key; if (!groups.has(k)) groups.set(k, {...ch, grade: q.grade, items: []}); groups.get(k).items.push(q); }
+        const rank = gr => gr.order === -1 ? -1 : (gr.grade || 20) * 1000 + gr.order;
+        const ordered = [...groups.values()].sort((a, b) => rank(a) - rank(b));
+        list.replaceChildren();
+        if (!ordered.length) list.append(h('p', 'p-note', 'Ничего не найдено.'));
+        for (const gr of ordered) {
+          const sec = h('section', 'btt-chap'), top = h('div', 'btt-chaphead');
+          if (gr.cover) { const im = new Image(); im.src = `art/qcover_${gr.cover}.webp`; im.alt = ''; im.className = 'btt-cover'; im.addEventListener('error', () => im.remove()); top.append(im); }
+          const t = h('div'); t.append(h('h3', '', (gr.grade && gr.key !== 'mine' && gr.key !== 'culture' ? gr.grade + ' класс · ' : '') + gr.name), h('span', 'btt-meta', `тестов: ${gr.items.length}`)); top.append(t);
+          const grid = h('div', 'btt-lib'); for (const q of gr.items.sort(byPar)) grid.append(card(q));
+          sec.append(top, grid); list.append(sec);
+        }
+      };
+      search.addEventListener('input', draw); drawTabs(); draw(); body.replaceChildren(head, tabs, list);
     }
 
     /* ---------- импорт из текста ---------- */

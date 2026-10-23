@@ -1,0 +1,18 @@
+c6_objects|curious kids exploring a world of everyday objects connected by glowing lines into a classification tree
+c6_algo|a friendly turtle robot drawing a path on a grid and a cartoon drafting robot with a pencil, algorithm arrows
+c7_media|a colorful multimedia presentation with slides, sound waves, video frames and animation
+c8_python|a friendly cartoon python snake coding on a laptop, colorful syntax highlighted code shapes
+c9_prog|arrays as rows of numbered boxes on a conveyor, a programmer kid sorting them, loops of light
+c9_models|a 3D city model, graphs with nodes and edges, a database cabinet with tables as models of reality
+c9_net|planet Earth wrapped in glowing internet cables and satellites, routers and connected devices
+c10_info|information measurement — bits and bytes as building blocks, a scale weighing data
+c10_pc|history of computers from abacus and punched cards to modern laptop arranged as an evolution line
+c10_code|encoding of text, images and sound — letters turning into binary, pixels into numbers, sound waves into samples
+c10_logic|Euler circles, set diagrams and logic circuits glowing on a dark blackboard
+c10_docs|modern office technologies — a document, vector graphics and presentation slides on screens
+c11_sheets|data analysis on a big dashboard with spreadsheets, sorting filters and charts
+c11_algo|structured programming — modular blocks of code fitting together like puzzle pieces, arrays
+c11_models|graphs and networks of roads between cities, a database with linked tables
+c11_net|the global internet as a glowing information system with servers, clouds and services
+c11_society|information society and cybersecurity — a shield, a lock, digital citizens and law books
+c_memes|internet culture collage — a laughing cat, a happy shiba dog, gamers with headsets, emoji and a smartphone

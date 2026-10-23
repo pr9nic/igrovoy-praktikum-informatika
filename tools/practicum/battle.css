@@ -285,3 +285,13 @@ canvas.bt-confetti.bt-confetti{position:absolute;inset:0;width:100%;height:100%;
 @media (prefers-reduced-motion:reduce){.bt-pod,.bt-col,.bt-podav,.bt2-pod,.bt2-tile,.bt2-zone,.bt2-ropecol img{animation:none!important;transition:none!important}}
 @media (max-width:900px){.bt2-stage,.btt-editor{grid-template-columns:1fr}.bq-opts,.btt-popts{grid-template-columns:1fr}.bt2-avs{grid-template-columns:repeat(4,64px)}.bt2-offers{grid-template-columns:1fr}.bt2-rope{grid-template-columns:80px 1fr}.bt2-bit{width:44px;height:60px;font-size:26px}.bt2-trail{grid-template-columns:repeat(3,84px)}.bt2-tile{width:84px;height:84px}.bt-pod{width:30vw}.btt-tiers{grid-template-columns:1fr 1fr}.bt2-stats{grid-template-columns:1fr 1fr}.bq-match{grid-template-columns:1fr}}
 @media print{.btt-nav,.btt-row,.p-head,.s4-toolbar{display:none!important}.btt,.btt-table th{color:#000;background:#fff!important}.btt-table td{color:#000}}
+
+/* библиотека: вкладки классов, главы с обложками */
+.btt-libhead{align-items:center;flex-wrap:wrap}.btt-search{flex:1;min-width:220px;padding:10px 14px;border-radius:12px;border:2px solid #34466e;background:#0f1730;color:#e8eefb;font:600 15px system-ui}
+.btt-gtabs{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px}.btt-gtab{padding:7px 12px;border-radius:999px;border:2px solid #34466e;background:#141e38;color:#cfe0ff;font:700 13px system-ui;cursor:pointer}.btt-gtab.on{background:#5b2bd6;border-color:#8f6bff;color:#fff}
+.btt-libwrap{display:grid;gap:22px}.btt-chap{display:grid;gap:10px}.btt-chaphead{display:flex;gap:14px;align-items:center}.btt-chaphead h3{margin:0;font-size:18px}
+.btt-cover{width:150px;height:84px;object-fit:cover;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.35);flex:none}
+.btt-lib{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.btt-qz{display:grid;gap:6px;align-content:space-between;padding:12px;border-radius:14px;background:#141e38;border:1px solid #2c3a5e}.btt-qz b{font-size:15px;line-height:1.3}
+.btt-acts{display:flex;gap:6px;align-items:center;flex-wrap:nowrap}.btt-acts .p-primary{flex:1;padding:8px 10px}.btt-acts .p-small{padding:8px 10px;min-width:38px}
+@media(max-width:700px){.btt-cover{width:110px;height:62px}}

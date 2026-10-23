@@ -8,8 +8,8 @@ for (const b of [T, S]) await b.size(1440, 900);
 await S.send('Page.navigate', {url: BASE + '/courses/game-8-practicum/'}); await S.ev("await waitFor(()=>$('.p-login form'))");
 await S.ev(`$('.p-login select').value='${CLS}';$('.p-login select').dispatchEvent(new Event('change'));$('[data-field=name]').value='Бойцов Артём';$('.p-login form').requestSubmit();await waitFor(()=>$('.p-grid'))`);
 // учитель: библиотека → демонстрация всех типов → классика для 8 «В»
-await T.send('Page.navigate', {url: BASE + '/courses/game-8-practicum/#teacher'}); await T.ev("await waitFor(()=>$('[data-act=battle-teacher]'),15000);$('[data-act=battle-teacher]').click();await waitFor(()=>document.querySelectorAll('.btt-qz').length>=7,15000)");
-T.check('библиотека: демонстрация и разминки 6–11 классов', await T.ev("return document.querySelectorAll('.btt-qz').length===7&&[...document.querySelectorAll('.btt-qz b')].some(b=>/Демонстрация/.test(b.textContent))"));
+await T.send('Page.navigate', {url: BASE + '/courses/game-8-practicum/#teacher'}); await T.ev("await waitFor(()=>$('[data-act=battle-teacher]'),15000);$('[data-act=battle-teacher]').click();await waitFor(()=>$('[data-grade=all]'),15000);$('[data-grade=all]').click();await waitFor(()=>document.querySelectorAll('.btt-qz').length>=7,15000)");
+T.check('библиотека: демонстрация и разминки 6–11 классов', await T.ev("return [6,7,8,9,10,11].every(g=>[...document.querySelectorAll('.btt-qz b')].some(b=>b.textContent==='Разминка: '+g+' класс'))&&[...document.querySelectorAll('.btt-qz b')].some(b=>/Демонстрация/.test(b.textContent))"));
 await T.shot('bt-library', 1440, 900, false);
 await T.ev("[...document.querySelectorAll('.btt-qz')].find(c=>/Демонстрация/.test(c.textContent)).querySelector('[data-play]').click();await waitFor(()=>$('[data-act=btt-open]'))");
 await T.ev(`$('[data-field=btt-class]').value='${CLS}';$('[data-mode=classic]').click()`); await T.shot('bt-host', 1440, 900, false);
@@ -49,7 +49,7 @@ T.check('отчёт: таблица вопросов, учеников и отв
 await T.shot('bt-report', 1440, 900, true);
 await S.ev("await waitFor(()=>$('.bt2-final'),8000)"); S.check('у ученика — финал с пьедесталом', await S.ev("return !!$('.bt2-pod.gold')")); await S.shot('bt-final', 1440, 900, false);
 // «Восхождение»: разминка 8 класса, цель 30 %
-await T.ev("$('[data-tab=library]').click();await waitFor(()=>document.querySelectorAll('.btt-qz').length>=7);[...document.querySelectorAll('.btt-qz')].find(c=>/Разминка: 8/.test(c.textContent)).querySelector('[data-play]').click();await waitFor(()=>$('[data-act=btt-open]'))");
+await T.ev("$('[data-tab=library]').click();await waitFor(()=>$('[data-grade=all]'));$('[data-grade=all]').click();await waitFor(()=>document.querySelectorAll('.btt-qz').length>=7);[...document.querySelectorAll('.btt-qz')].find(c=>/Разминка: 8/.test(c.textContent)).querySelector('[data-play]').click();await waitFor(()=>$('[data-act=btt-open]'))");
 await T.ev(`$('[data-field=btt-class]').value='${CLS}';$('[data-mode=peak]').click();const g=$('.btt-extra input[type=range]');g.value=30;g.dispatchEvent(new Event('input'))`);
 await T.ev("$('[data-act=btt-open]').click()"); await T.sleep(800);
 let r = await T.ev("return $('.btt-ctl').textContent"); if (!/лобби/.test(r)) { await T.ev("await waitFor(()=>$('.btt-ctl'),5000)"); }

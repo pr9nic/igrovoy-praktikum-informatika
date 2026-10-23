@@ -1,0 +1,24 @@
+m_fine|a cute robot calmly sitting at a table drinking tea in a server room that is on fire, smiling, everything is fine
+m_wait|a pale droopy patient creature waiting on a bench next to a computer screen with a loading bar stuck at the very beginning
+m_doge|a happy shiba inu dog with side-eye surrounded by floating colorful ones and zeros and computer chips
+m_stonks|a confident cartoon businessman robot pointing at a rising arrow chart behind him
+m_capy|a relaxed capybara with headphones lying in a hot spring with a laptop, totally calm
+m_hamster|an excited hamster furiously tapping a smartphone screen with coins flying out
+m_cat_code|an intense cat wearing glasses typing super fast on a keyboard, code glowing on a screen
+m_surprise|a cat with huge shocked eyes and open mouth looking at a laptop where everything suddenly works
+m_brain|four stages of a cartoon brain glowing brighter and bigger, each one more cosmic than the previous
+m_buttons|a sweating cartoon student hesitating between two big red buttons on a control panel
+m_distracted|a cartoon robot turning its head to look at a shiny new laptop while an old grumpy desktop computer frowns at it
+m_fiasco|a dramatic sad robot on a theater stage under a spotlight, holding a broken floppy disk
+m_meditate|a cartoon robot meditating in lotus pose floating in deep cosmos surrounded by glowing knowledge symbols
+m_cringe|a cartoon teenager covering face with both hands in embarrassment in front of a messy code screen
+m_sigma|a cool student in sunglasses walking away from an exploding pile of solved math tasks, very confident
+m_wizard|a wizard robot with a staff blocking little green virus monsters at a glowing firewall bridge
+m_dance|a cheerful cartoon singer robot dancing in 1980s style with a microphone and a trench coat
+m_floppa|a big caracal cat with black ear tufts sitting seriously in front of a computer monitor, staring
+m_okak|a tiny kitten with a confused surprised face tilting its head at a strange glowing gadget
+m_bugs|a brave little programmer with a fly swatter facing a giant pile of cartoon bugs
+m_npc|several identical grey cartoon characters standing in a row repeating the same pose, video game NPC style
+m_galaxy|a tiny astronaut cat floating among planets made of computer parts
+m_undo|a panicking cartoon teacher pressing a giant undo button, papers flying
+m_wifi|a group of cartoon kids happily dancing around a wifi router that has full signal bars
